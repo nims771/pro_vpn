@@ -747,7 +747,7 @@ export class ConnectBar extends LitElement {
       box-sizing: border-box;
       display: flex;
       gap: 12px;
-      padding: 16px 16px max(16px, env(safe-area-inset-bottom)) 22px;
+      padding: 12px 14px max(12px, env(safe-area-inset-bottom)) 20px;
     }
 
     .status {
@@ -760,7 +760,7 @@ export class ConnectBar extends LitElement {
 
     .l1 {
       color: #f2f2f2;
-      font-size: 0.95rem;
+      font-size: 0.8rem;
       line-height: 1.3;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -770,9 +770,9 @@ export class ConnectBar extends LitElement {
       align-items: center;
       color: #a8aea9;
       display: flex;
-      font-size: 0.78rem;
+      font-size: 0.7rem;
       gap: 6px;
-      margin-top: 3px;
+      margin-top: 2px;
       overflow: hidden;
       white-space: nowrap;
     }
@@ -785,7 +785,7 @@ export class ConnectBar extends LitElement {
       all: unset;
       align-items: center;
       background: #4a4d4b;
-      border: 3px solid #6c706d;
+      border: 2.5px solid #6c706d;
       border-radius: 999px;
       box-sizing: border-box;
       color: #f5f5f5;
@@ -793,12 +793,12 @@ export class ConnectBar extends LitElement {
       display: flex;
       flex: none;
       font-family: var(--outline-font-family);
-      font-size: 1.15rem;
-      height: 60px;
+      font-size: 0.98rem;
+      height: 48px;
       justify-content: center;
       letter-spacing: 0.01em;
-      min-width: 150px;
-      padding: 0 26px;
+      min-width: 118px;
+      padding: 0 20px;
       position: relative;
       transition:
         background 0.3s ease,

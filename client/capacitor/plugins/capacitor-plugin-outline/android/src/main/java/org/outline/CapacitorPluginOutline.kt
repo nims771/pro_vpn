@@ -257,6 +257,20 @@ class CapacitorPluginOutline : Plugin() {
     }
   }
 
+  // Fork: opens Android's VPN settings, where the user can turn on
+  // "Always-on VPN" and "Block connections without VPN" (kill switch).
+  @PluginMethod
+  fun openVpnSettings(call: PluginCall) {
+    try {
+      val intent = Intent(android.provider.Settings.ACTION_VPN_SETTINGS)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      baseContext().startActivity(intent)
+      call.resolve()
+    } catch (e: Exception) {
+      sendErrorResult(call, platformErrorFromException(e))
+    }
+  }
+
   // Fork: stable device identity for the HWID shown in settings and sent to
   // subscription panels. ANDROID_ID is unique per device + app signing key.
   @PluginMethod

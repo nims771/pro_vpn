@@ -54,6 +54,10 @@ export class CapacitorPluginOutlineWeb
     throw this.unimplemented('Not implemented on web.');
   }
 
+  async openVpnSettings(): Promise<void> {
+    throw this.unimplemented('Not implemented on web.');
+  }
+
   async getDeviceInfo(): Promise<{
     deviceId: string;
     manufacturer: string;

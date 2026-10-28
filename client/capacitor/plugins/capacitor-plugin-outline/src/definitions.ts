@@ -32,6 +32,8 @@ export interface CapacitorPluginOutline {
   getTrafficStats(): Promise<{rxBytes: number; txBytes: number}>;
   /** Fork: time of an HTTP request through the server, -1 on failure. */
   measureLatency(): Promise<{ms: number}>;
+  /** Fork: opens the system VPN settings (always-on, kill switch). */
+  openVpnSettings(): Promise<void>;
   /** Fork: device identity for the HWID. */
   getDeviceInfo(): Promise<{
     deviceId: string;

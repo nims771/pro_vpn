@@ -217,28 +217,16 @@ export class RootNavigation extends LitElement {
             <md-icon slot="start">home</md-icon>
             ${this.localize('servers-menu-item')}
           </md-list-item>
-          <md-list-item @click=${() => this.changePage('contact')}>
+          <!-- Fork: feedback, help and policy links removed; settings added. -->
+          <md-list-item @click=${() => this.changePage('settings')}>
             <md-ripple></md-ripple>
-            <md-icon slot="start">feedback</md-icon>
-            ${this.localize('contact-page-title')}
+            <md-icon slot="start">settings</md-icon>
+            ${this.localize('settings-page-title')}
           </md-list-item>
           <md-list-item @click=${() => this.changePage('about')}>
             <md-ripple></md-ripple>
             <md-icon slot="start">info</md-icon>
             ${this.localize('about-page-title')}
-          </md-list-item>
-          <md-list-item>
-            <md-ripple></md-ripple>
-            <md-icon slot="start">help</md-icon>
-            <a href="https://support.getoutline.org">
-              <span>${this.localize('help-page-title')}</span>
-              <md-icon id="open-in-new-icon">open_in_new</md-icon>
-            </a>
-          </md-list-item>
-          <md-list-item @click=${() => this.changePage('device')}>
-            <md-ripple></md-ripple>
-            <md-icon slot="start">fingerprint</md-icon>
-            ${this.localize('device-page-title')}
           </md-list-item>
           <md-list-item @click=${() => this.changePage('language')}>
             <md-ripple></md-ripple>
@@ -262,29 +250,6 @@ export class RootNavigation extends LitElement {
               </md-list-item>`
             : nothing}
         </md-list>
-        <ul>
-          <li>
-            <a href="https://getoutline.org/policies/privacy">
-              ${this.localize('privacy')}
-              <md-icon id="open-in-new-icon">open_in_new</md-icon>
-            </a>
-          </li>
-          <li>
-            <a href="${this.dataCollectionPageUrl}">
-              ${this.localize('data-collection')}
-              <md-icon id="open-in-new-icon">open_in_new</md-icon>
-            </a>
-          </li>
-          <li>
-            <a href="https://getoutline.org/policies/terms-of-service">
-              ${this.localize('terms')}
-              <md-icon id="open-in-new-icon">open_in_new</md-icon>
-            </a>
-          </li>
-          <li @click=${() => this.changePage('licenses')}>
-            ${this.localize('licenses-page-title')}
-          </li>
-        </ul>
       </nav>
     </div>`;
   }

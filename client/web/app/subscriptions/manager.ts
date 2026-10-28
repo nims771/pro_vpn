@@ -26,6 +26,7 @@ import {proclientStore, Subscription} from './store';
 import {ServerRepository} from '../../model/server';
 import {deviceHeaders} from '../device';
 import {getDefaultMethodChannel} from '../method_channel';
+import {getSettings} from '../proclient_settings';
 
 const DEFAULT_UPDATE_INTERVAL_HOURS = 6;
 
@@ -107,9 +108,15 @@ export class SubscriptionManager {
   /** Refreshes subscriptions whose interval elapsed (or all, with force). */
   async refreshAll(force = false): Promise<void> {
     const now = Date.now();
+    // User setting: -1 = never automatically, N = every N hours, 0 = panel's.
+    const setting = getSettings().subscriptionRefreshHours;
+    if (!force && setting < 0) return;
     const due = proclientStore.subscriptions.filter(s => {
       if (force || !s.updatedAt) return true;
-      const hours = s.updateIntervalHours || DEFAULT_UPDATE_INTERVAL_HOURS;
+      const hours =
+        setting > 0
+          ? setting
+          : s.updateIntervalHours || DEFAULT_UPDATE_INTERVAL_HOURS;
       return now - s.updatedAt > hours * 3600_000;
     });
     await Promise.allSettled(due.map(s => this.refresh(s.id)));

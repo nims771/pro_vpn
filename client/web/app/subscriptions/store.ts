@@ -120,6 +120,12 @@ class ProclientStore {
 
   // ---- ping ----
 
+  /** A server just failed to connect: rank it last until pinged again. */
+  markUnreachable(serverId: string) {
+    this.pings = {...this.pings, [serverId]: null};
+    this.emit();
+  }
+
   /** Servers being re-pinged one by one (tap on a card's ping). */
   pingingIds = new Set<string>();
 

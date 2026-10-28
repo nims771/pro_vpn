@@ -86,6 +86,16 @@ export class AboutView extends LitElement {
     footer img {
       width: 120px;
     }
+
+    .licenses {
+      font-size: 0.8rem;
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .licenses a {
+      color: var(--outline-label-color);
+    }
   `;
 
   render() {
@@ -115,6 +125,23 @@ export class AboutView extends LitElement {
             'https://www.reddit.com/r/outlinevpn'
           )}
         ></section>
+        <!-- Fork: open-source licenses (required by them), moved here from the menu. -->
+        <p class="licenses">
+          <a
+            href="#"
+            @click=${(e: Event) => {
+              e.preventDefault();
+              this.dispatchEvent(
+                new CustomEvent('ChangePage', {
+                  detail: {page: 'licenses'},
+                  bubbles: true,
+                  composed: true,
+                })
+              );
+            }}
+            >${this.localize('licenses-page-title')}</a
+          >
+        </p>
       </article>
     `;
   }

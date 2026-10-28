@@ -28,8 +28,11 @@ import './server_list';
 import './proclient_panel';
 import './server_list_item/proclient_ui';
 import {ServerListItem as _ServerListItem} from './server_list_item';
+import {whenIntroDone} from '../../app/intro';
+import {getSettings} from '../../app/proclient_settings';
 import {pingServer, pingServers} from '../../app/subscriptions/ping';
 import {proclientStore} from '../../app/subscriptions/store';
+import autoLogo from '../../assets/intro-logo.png';
 
 export type ServerListItem = _ServerListItem;
 
@@ -121,6 +124,104 @@ export class ServerList extends LitElement {
       }
 
       /* Fork: the single connect button pinned to the bottom of the page. */
+      .zero-logo {
+        margin-bottom: 34px;
+        max-width: 72%;
+        width: 260px;
+      }
+
+      /* Fork: "Auto" (best server) choice, first in the list. */
+      .auto-card {
+        align-items: center;
+        background: var(--outline-card-background);
+        border: 2px solid transparent;
+        border-radius: 14px;
+        box-shadow: var(--outline-elevation);
+        box-sizing: border-box;
+        cursor: pointer;
+        display: flex;
+        font-family: var(--outline-font-family);
+        gap: 10px;
+        margin: 4px 8px 6px;
+        padding: 9px 12px;
+        transition:
+          border-color 0.25s ease,
+          background 0.25s ease;
+      }
+
+      .auto-card.selected {
+        background: linear-gradient(
+            rgba(var(--outline-primary-rgb), 0.07),
+            rgba(var(--outline-primary-rgb), 0.07)
+          ),
+          var(--outline-card-background);
+        border-color: var(--outline-primary);
+      }
+
+      .auto-radio {
+        border: 2px solid var(--outline-label-color);
+        border-radius: 50%;
+        box-sizing: border-box;
+        display: grid;
+        flex: none;
+        height: 18px;
+        place-items: center;
+        width: 18px;
+      }
+
+      .auto-radio::after {
+        background: var(--outline-primary);
+        border-radius: 50%;
+        content: '';
+        height: 8px;
+        transform: scale(0);
+        transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1);
+        width: 8px;
+      }
+
+      .auto-card.selected .auto-radio {
+        border-color: var(--outline-primary);
+      }
+
+      .auto-card.selected .auto-radio::after {
+        transform: scale(1);
+      }
+
+      .auto-icon {
+        align-items: center;
+        background: linear-gradient(
+          135deg,
+          var(--outline-primary),
+          var(--outline-primary-dark, var(--outline-primary))
+        );
+        border-radius: 8px;
+        color: #fff;
+        display: flex;
+        flex: none;
+        height: 26px;
+        justify-content: center;
+        width: 26px;
+        --md-icon-size: 18px;
+      }
+
+      .auto-text {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .auto-title {
+        color: var(--outline-text-color);
+        font-size: 0.95rem;
+      }
+
+      .auto-sub {
+        color: var(--outline-label-color);
+        font-size: 0.72rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .connect-bar {
         bottom: 0;
         margin-top: auto;
@@ -200,6 +301,20 @@ export class ServerList extends LitElement {
   };
   private autoTestedFor = '';
 
+  // Fork: "Auto" = connect to the best server by ping; if it fails, try the
+  // next one. The same chain is used to switch away from a server that stops
+  // answering (failover).
+  private static readonly AUTO = 'auto';
+  @state() private chain?: {
+    queue: string[];
+    current: string;
+    sawConnecting: boolean;
+  };
+  @state() private searching = false;
+  private reconnectingSince = new Map<string, number>();
+  private static readonly FAILOVER_AFTER_MS = 20_000;
+  private launchHandled = false;
+
   private unsubscribeStore?: () => void;
   private lastPingedIds = '';
   private pingTimer?: number;
@@ -223,6 +338,7 @@ export class ServerList extends LitElement {
   // Ping automatically whenever the set of servers changes (app start,
   // subscription added or refreshed).
   updated() {
+    const settings = getSettings();
     // Test the connection once, automatically, right after connecting.
     const active = this.activeServer;
     if (
@@ -230,17 +346,144 @@ export class ServerList extends LitElement {
       this.autoTestedFor !== active.id
     ) {
       this.autoTestedFor = active.id;
-      void this.runTest();
+      if (settings.testAfterConnect) void this.runTest();
     } else if (!active) {
       this.autoTestedFor = '';
     }
 
+    this.advanceChain();
+    this.checkFailover();
+    this.maybeConnectOnLaunch();
+
     const ids = (this.servers ?? []).map(s => s.id).join(',');
     if (ids && ids !== this.lastPingedIds) {
+      const first = !this.lastPingedIds;
       this.lastPingedIds = ids;
-      window.clearTimeout(this.pingTimer);
-      this.pingTimer = window.setTimeout(() => this.runPing(), 800);
+      // On open only if enabled; after a subscription change always.
+      if (!first || settings.pingOnOpen) {
+        window.clearTimeout(this.pingTimer);
+        this.pingTimer = window.setTimeout(() => this.runPing(), 800);
+      }
     }
+  }
+
+  private get isAuto(): boolean {
+    return this.chosenServerId === ServerList.AUTO;
+  }
+
+  /** Servers sorted best-first by ping; unmeasured after, unreachable last. */
+  private rankedServers(exclude: string[] = []): ServerListItem[] {
+    const pings = proclientStore.pings;
+    const score = (s: ServerListItem) => {
+      const ms = pings[s.id];
+      if (typeof ms === 'number') return ms;
+      return ms === null ? 1e9 : 1e6;
+    };
+    return (this.servers ?? [])
+      .filter(s => !exclude.includes(s.id) && !s.errorMessageId)
+      .sort((a, b) => score(a) - score(b));
+  }
+
+  private get bestServer(): ServerListItem | undefined {
+    return this.rankedServers()[0];
+  }
+
+  /** Pings everything (fresh), then connects to the best, falling back down the list. */
+  private async startChain(exclude: string[] = []) {
+    if (this.searching) return;
+    this.searching = true;
+    try {
+      await pingServers(
+        (this.servers ?? []).map(s => ({id: s.id, address: s.address}))
+      );
+    } finally {
+      this.searching = false;
+    }
+    const pings = proclientStore.pings;
+    let ranked = this.rankedServers(exclude);
+    // Prefer servers that answered; keep the rest only as a last resort.
+    const reachable = ranked.filter(s => pings[s.id] !== null);
+    if (reachable.length) ranked = reachable;
+    const [first, ...rest] = ranked.map(s => s.id);
+    if (!first) return;
+    this.chain = {queue: rest, current: first, sawConnecting: false};
+    this.fireServerEvent('ConnectPressed', first);
+  }
+
+  private advanceChain() {
+    const chain = this.chain;
+    if (!chain) return;
+    const current = this.servers?.find(s => s.id === chain.current);
+    if (!current) {
+      this.chain = undefined;
+      return;
+    }
+    const state = current.connectionState;
+    if (state === ServerConnectionState.CONNECTED) {
+      this.chain = undefined;
+    } else if (
+      state === ServerConnectionState.CONNECTING ||
+      state === ServerConnectionState.RECONNECTING
+    ) {
+      if (!chain.sawConnecting) this.chain = {...chain, sawConnecting: true};
+    } else if (
+      state === ServerConnectionState.DISCONNECTED &&
+      chain.sawConnecting
+    ) {
+      // That one failed: try the next best.
+      proclientStore.markUnreachable(chain.current);
+      const [next, ...rest] = chain.queue;
+      if (!next) {
+        this.chain = undefined;
+        return;
+      }
+      this.chain = {queue: rest, current: next, sawConnecting: false};
+      this.fireServerEvent('ConnectPressed', next);
+    }
+  }
+
+  /** Switch away from a server that has been "reconnecting" for too long. */
+  private checkFailover() {
+    const now = Date.now();
+    for (const s of this.servers ?? []) {
+      if (s.connectionState !== ServerConnectionState.RECONNECTING) {
+        this.reconnectingSince.delete(s.id);
+      } else if (!this.reconnectingSince.has(s.id)) {
+        this.reconnectingSince.set(s.id, now);
+        // Re-check once the grace period is over.
+        window.setTimeout(
+          () => this.requestUpdate(),
+          ServerList.FAILOVER_AFTER_MS + 500
+        );
+      }
+    }
+    const active = this.activeServer;
+    if (
+      !getSettings().failover ||
+      this.chain ||
+      this.searching ||
+      active?.connectionState !== ServerConnectionState.RECONNECTING ||
+      (this.servers?.length ?? 0) < 2
+    ) {
+      return;
+    }
+    const since = this.reconnectingSince.get(active.id) ?? now;
+    if (now - since >= ServerList.FAILOVER_AFTER_MS) {
+      this.reconnectingSince.delete(active.id);
+      void this.startChain([active.id]);
+    }
+  }
+
+  /** "Connect on launch" setting: once, after the app has settled. */
+  private maybeConnectOnLaunch() {
+    if (this.launchHandled || !(this.servers?.length ?? 0)) return;
+    this.launchHandled = true;
+    if (!getSettings().connectOnLaunch) return;
+    void whenIntroDone().then(() =>
+      window.setTimeout(() => {
+        if (!this.activeServer) this.onConnectButton();
+      }, 1500)
+    );
   }
 
   private runPing() {
@@ -259,10 +502,10 @@ export class ServerList extends LitElement {
 
   /** The server the bottom button acts on. */
   private get targetServer(): ServerListItem | undefined {
+    if (this.activeServer) return this.activeServer;
+    if (this.isAuto) return this.bestServer ?? this.servers?.[0];
     return (
-      this.activeServer ??
-      this.servers?.find(s => s.id === this.chosenServerId) ??
-      this.servers?.[0]
+      this.servers?.find(s => s.id === this.chosenServerId) ?? this.servers?.[0]
     );
   }
 
@@ -271,6 +514,8 @@ export class ServerList extends LitElement {
     if (!serverId) return;
     this.chosenServerId = serverId;
     writeChosenServer(serverId);
+    this.chain = undefined;
+    if (serverId === ServerList.AUTO) return;
 
     // Already connected to another server: switch to the chosen one.
     const active = this.activeServer;
@@ -287,10 +532,15 @@ export class ServerList extends LitElement {
 
   private onConnectButton() {
     const active = this.activeServer;
+    this.chain = undefined;
     if (active) {
       if (active.connectionState !== ServerConnectionState.DISCONNECTING) {
         this.fireServerEvent('DisconnectPressed', active.id);
       }
+      return;
+    }
+    if (this.isAuto) {
+      void this.startChain();
       return;
     }
     const target = this.targetServer;
@@ -340,7 +590,12 @@ export class ServerList extends LitElement {
 
   private statusTexts(target: ServerListItem): [string, string] {
     const state = target.connectionState;
-    const name = withFlag(target.name);
+    const name = this.isAuto
+      ? this.localize('proclient-auto-via', 'name', withFlag(target.name))
+      : withFlag(target.name);
+    if (this.searching) {
+      return [this.localize('proclient-auto-searching'), name];
+    }
     const test = this.test?.serverId === target.id ? this.test : undefined;
     const up =
       state === ServerConnectionState.CONNECTED ||
@@ -380,6 +635,39 @@ export class ServerList extends LitElement {
     return [this.localize('proclient-ping-tap'), name];
   }
 
+  private renderAutoCard() {
+    const best = this.bestServer;
+    const ms = best ? proclientStore.pings[best.id] : undefined;
+    const sub = best
+      ? this.localize('proclient-auto-best', 'name', withFlag(best.name)) +
+        (typeof ms === 'number'
+          ? ` · ${this.localize('proclient-ms', 'ms', String(ms))}`
+          : '')
+      : this.localize('proclient-auto-desc');
+    return html`<div
+      class="auto-card ${this.isAuto ? 'selected' : ''}"
+      role="radio"
+      aria-checked=${this.isAuto ? 'true' : 'false'}
+      tabindex="0"
+      @click=${() => this.selectAuto()}
+      @keydown=${(e: KeyboardEvent) =>
+        (e.key === 'Enter' || e.key === ' ') && this.selectAuto()}
+    >
+      <span class="auto-radio"></span>
+      <span class="auto-icon"><md-icon>bolt</md-icon></span>
+      <div class="auto-text">
+        <div class="auto-title">${this.localize('proclient-auto')}</div>
+        <div class="auto-sub">${sub}</div>
+      </div>
+    </div>`;
+  }
+
+  private selectAuto() {
+    this.chosenServerId = ServerList.AUTO;
+    writeChosenServer(ServerList.AUTO);
+    this.chain = undefined;
+  }
+
   private renderConnectBar() {
     const target = this.targetServer;
     if (!target) return '';
@@ -391,7 +679,7 @@ export class ServerList extends LitElement {
           server-id=${target.id}
           primary=${primary}
           secondary=${secondary}
-          ?testing=${this.test?.running ?? false}
+          ?testing=${(this.test?.running ?? false) || this.searching}
           ?disabled=${!this.activeServer && Boolean(target.errorMessageId)}
           @connect-toggle=${this.onConnectButton}
           @status-tap=${() => {
@@ -450,10 +738,7 @@ export class ServerList extends LitElement {
         <section>
           <header>
             <button type="button" @click=${this.requestPromptAddServer}>
-              <server-connection-indicator
-                connection-state="disconnected"
-                ?darkMode=${this.darkMode}
-              ></server-connection-indicator>
+              <img class="zero-logo" src=${autoLogo} alt="" />
               <h1>${this.localize('server-add')}</h1>
               <h2>${this.localize('server-add-zero-state-instructions')}</h2>
             </button>
@@ -481,11 +766,12 @@ export class ServerList extends LitElement {
             ${this.localize('proclient-ping-button')}
           </button>
         </div>
+        ${this.renderAutoCard()}
         <server-list
           ?darkMode=${this.darkMode}
           .servers=${this.servers}
           .localize=${this.localize}
-          .selectedId=${this.targetServer?.id ?? ''}
+          .selectedId=${this.isAuto ? '' : (this.targetServer?.id ?? '')}
           .pings=${proclientStore.pings}
           ?pinging=${proclientStore.pinging}
           .pingingIds=${new Set(proclientStore.pingingIds)}
@@ -500,9 +786,10 @@ const CHOSEN_SERVER_KEY = 'proclient.chosenServer';
 
 function readChosenServer(): string {
   try {
-    return localStorage.getItem(CHOSEN_SERVER_KEY) ?? '';
+    // "Auto" (best server) by default.
+    return localStorage.getItem(CHOSEN_SERVER_KEY) || 'auto';
   } catch {
-    return '';
+    return 'auto';
   }
 }
 

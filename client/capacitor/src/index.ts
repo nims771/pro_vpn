@@ -30,6 +30,7 @@ import type {
   TunnelStatus,
 } from '@web/app/outline_server_repository/vpn';
 import type {OutlinePlatform} from '@web/app/platform';
+import {setSystemVpnSettingsOpener} from '@web/app/proclient_settings';
 import {proclientStore} from '@web/app/subscriptions/store';
 import {AbstractUpdater} from '@web/app/updater';
 import {UrlInterceptor} from '@web/app/url_interceptor';
@@ -254,6 +255,7 @@ if (hasDeviceSupport && Capacitor.getPlatform() === 'android') {
     async () => (await CapacitorPluginOutline.measureLatency()).ms
   );
   setDeviceInfoSource(() => CapacitorPluginOutline.getDeviceInfo());
+  setSystemVpnSettingsOpener(() => CapacitorPluginOutline.openVpnSettings());
 } else if (!hasDeviceSupport && location.search.includes('demoTraffic')) {
   // Browser preview only (?demoTraffic): simulated counters to design the panel.
   let rx = 300 * 1024 * 1024;
