@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -181,8 +182,11 @@ func main() {
 		}, exitCodeFailure)
 	}
 
-	go vpn.RelayTraffic(tunDevice, remoteDevice.ReadWriteCloser)
-	go vpn.RelayTraffic(remoteDevice.ReadWriteCloser, tunDevice)
+	// Fork: count bytes both ways and report them to the app every second as
+	// "PROVPN_STATS <download> <upload>" on stdout (read by go_vpn_tunnel.ts).
+	go vpn.RelayTraffic(tunDevice, &countingReader{r: remoteDevice.ReadWriteCloser, n: &downloadBytes})
+	go vpn.RelayTraffic(remoteDevice.ReadWriteCloser, &countingReader{r: tunDevice, n: &uploadBytes})
+	go reportTrafficStats()
 
 	// This message is used in TypeScript to determine whether tun2socks has been started successfully
 	logger.Info("tun2socks running...")
@@ -227,4 +231,32 @@ func marshalErrorToJSON(e error) string {
 func printErrorAndExit(e error, exitCode int) {
 	fmt.Fprintln(os.Stderr, marshalErrorToJSON(e))
 	os.Exit(exitCode)
+}
+
+// ---- Fork: traffic counters for the app's speed display ----
+
+var (
+	downloadBytes atomic.Int64
+	uploadBytes   atomic.Int64
+)
+
+type countingReader struct {
+	r io.Reader
+	n *atomic.Int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	if n > 0 {
+		c.n.Add(int64(n))
+	}
+	return n, err
+}
+
+func reportTrafficStats() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		fmt.Fprintf(os.Stdout, "PROVPN_STATS %d %d\n", downloadBytes.Load(), uploadBytes.Load())
+	}
 }

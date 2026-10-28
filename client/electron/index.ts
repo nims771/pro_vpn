@@ -36,6 +36,7 @@ import {autoUpdater} from 'electron-updater';
 import {lookupIp} from './connectivity';
 import {invokeGoMethod} from './go_plugin';
 import {GoVpnTunnel} from './go_vpn_tunnel';
+import {registerProclientIpc} from './proclient';
 import {installRoutingServices, RoutingDaemon} from './routing_service';
 import {TunnelStore} from './tunnel_store';
 import {closeVpn, establishVpn, onVpnStateChanged} from './vpn_service';
@@ -94,6 +95,10 @@ const enum Options {
 }
 
 let currentTunnel: VpnTunnel | undefined;
+// Fork: bumped by every connect/disconnect request, so a slow connection
+// attempt that has been superseded (user picked another server or pressed
+// disconnect) knows to give up instead of taking over the VPN.
+let startGeneration = 0;
 
 /**
  * Sentry must be initialized before electron app is ready:
@@ -138,7 +143,7 @@ function setupTray(): void {
   tray.on('click', () => {
     mainWindow?.show();
   });
-  tray.setToolTip('Outline');
+  tray.setToolTip('ProVPN');
   updateTray(TunnelStatus.DISCONNECTED);
 }
 
@@ -372,7 +377,11 @@ async function createVpnTunnel(
 }
 
 // Invoked by both the start-proxying event handler and auto-connect.
-async function startVpn(request: StartRequestJson, isAutoConnect: boolean) {
+async function startVpn(
+  request: StartRequestJson,
+  isAutoConnect: boolean,
+  generation = startGeneration
+) {
   console.debug('startVpn called with request ', JSON.stringify(request));
 
   if (IS_LINUX) {
@@ -384,15 +393,24 @@ async function startVpn(request: StartRequestJson, isAutoConnect: boolean) {
     throw new Error('already connected');
   }
 
-  currentTunnel = await createVpnTunnel(request, isAutoConnect);
+  const tunnel = await createVpnTunnel(request, isAutoConnect);
+  if (generation !== startGeneration) {
+    throw new Error('connection cancelled');
+  }
+  if (currentTunnel) {
+    throw new Error('already connected');
+  }
+  currentTunnel = tunnel;
   if (debugMode) {
-    currentTunnel.enableDebugMode();
+    tunnel.enableDebugMode();
   }
 
-  currentTunnel.onceDisconnected
+  tunnel.onceDisconnected
     .then(() => {
       console.log(`disconnected from ${request.id}`);
-      currentTunnel = undefined;
+      if (currentTunnel === tunnel) {
+        currentTunnel = undefined;
+      }
       setUiTunnelStatus(TunnelStatus.DISCONNECTED, request.id);
     })
     .catch(e => {
@@ -400,19 +418,19 @@ async function startVpn(request: StartRequestJson, isAutoConnect: boolean) {
       throw e;
     });
 
-  currentTunnel.onReconnecting(() => {
+  tunnel.onReconnecting(() => {
     console.log(`reconnecting to ${request.id}`);
     setUiTunnelStatus(TunnelStatus.RECONNECTING, request.id);
   });
 
-  currentTunnel.onReconnected(() => {
+  tunnel.onReconnected(() => {
     console.log(`reconnected to ${request.id}`);
     setUiTunnelStatus(TunnelStatus.CONNECTED, request.id);
   });
 
   // Don't check connectivity on boot: if the key was revoked or network connectivity is not ready,
   // we want the system to stay "connected" so that traffic doesn't leak.
-  await currentTunnel.connect(!isAutoConnect);
+  await tunnel.connect(!isAutoConnect);
   setUiTunnelStatus(TunnelStatus.CONNECTED, request.id);
 }
 
@@ -548,6 +566,7 @@ function main() {
           //
           // TODO: refactor channel name and namespace to a constant
           const request = JSON.parse(params) as StartRequestJson;
+          const generation = ++startGeneration;
           // TODO: Rather than first disconnecting, implement a more efficient switchover (as well as
           //       being faster, this would help prevent traffic leaks - the Cordova clients already do
           //       this).
@@ -561,7 +580,7 @@ function main() {
           console.log(`connecting to ${request.name} (${request.id})...`);
 
           try {
-            await startVpn(request, false);
+            await startVpn(request, false, generation);
             console.log(`connected to ${request.name} (${request.id})`);
             await setupAutoLaunch(request);
             // Auto-connect requires IPs; the hostname in here has already been resolved (see above).
@@ -571,7 +590,10 @@ function main() {
           } catch (e) {
             console.error('could not connect:', e);
             // clean up the state, no need to await because stopVpn might throw another error which can be ignored
-            void stopVpn();
+            // Fork: unless a newer request already owns the VPN.
+            if (generation === startGeneration) {
+              void stopVpn();
+            }
             throw e;
           }
           break;
@@ -580,6 +602,7 @@ function main() {
         case 'StopProxying':
           // Disconnects from the current server, if any.
           // TODO: refactor channel name and namespace to a constant
+          startGeneration++;
           await stopVpn();
           return '';
 
@@ -588,6 +611,9 @@ function main() {
       }
     }
   );
+
+  // Fork: speed counters, connection test and device id for the renderer.
+  registerProclientIpc();
 
   // Install backend services and return the error code
   // TODO: refactor channel name and namespace to a constant

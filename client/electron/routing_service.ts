@@ -271,7 +271,7 @@ export class RoutingDaemon {
  */
 function executeCommandAsRoot(command: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    sudo.exec(command, {name: 'Outline'}, (sudoError, stdout, stderr) => {
+    sudo.exec(command, {name: 'ProVPN'}, (sudoError, stdout, stderr) => {
       console.info(stdout);
       console.error(stderr);
 

@@ -20,10 +20,13 @@ import '@webcomponents/webcomponentsjs/webcomponents-bundle.js';
 import * as Sentry from '@sentry/electron/renderer';
 
 import {AbstractClipboard} from './clipboard';
+import {setDeviceInfoSource} from './device';
+import {showIntro} from './intro';
 import {getLocalizationFunction, main} from './main';
 import {installDefaultMethodChannel, MethodChannel} from './method_channel';
 import {VpnApi} from './outline_server_repository/vpn';
 import {ElectronVpnApi} from './outline_server_repository/vpn.electron';
+import {proclientStore} from './subscriptions/store';
 import {AbstractUpdater} from './updater';
 import {UrlInterceptor} from './url_interceptor';
 import {VpnInstaller} from './vpn_installer';
@@ -148,6 +151,18 @@ class ElectronMethodChannel implements MethodChannel {
 }
 
 installDefaultMethodChannel(new ElectronMethodChannel());
+
+// Fork: animated intro, plus the speed counters, connection test and device
+// id served by the main process (client/electron/proclient.ts).
+showIntro(document.title || 'ProVPN');
+if (isOsSupported) {
+  const ipc = window.electron.methodChannel;
+  proclientStore.setTrafficSource(() => ipc.invoke('proclient-traffic'));
+  proclientStore.setLatencySource(() => ipc.invoke('proclient-latency'));
+}
+setDeviceInfoSource(() =>
+  window.electron.methodChannel.invoke('proclient-device-info')
+);
 
 main({
   getVpnApi(): VpnApi | undefined {

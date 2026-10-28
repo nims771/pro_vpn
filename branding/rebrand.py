@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ребрендинг клиента Outline (Capacitor, Android + iOS).
+"""Ребрендинг клиента Outline (Capacitor: Android + iOS; Electron: Windows).
 
 Использование (из корня репозитория):
     python3 branding/rebrand.py            # применить branding/brand.json
@@ -24,6 +24,7 @@ BRANDING = ROOT / "branding"
 STATE_FILE = BRANDING / ".applied.json"
 CAP = ROOT / "client" / "capacitor"
 WEB = ROOT / "client" / "web"
+ELECTRON = ROOT / "client" / "electron"
 APPLE_LIB = ROOT / "client" / "src" / "cordova" / "apple" / "OutlineLib"
 
 # Значения исходного Outline: от них отталкиваемся при первом запуске.
@@ -313,6 +314,60 @@ def apply_web(cfg: dict, prev: dict) -> None:
 
 
 # ---------------------------------------------------------------- картинки
+def apply_electron(cfg: dict, prev: dict) -> None:
+    """Версия для Windows (Electron): имя, установщик, заголовок окна, трей."""
+    name = cfg["name"]
+    slug = re.sub(r"[^A-Za-z0-9]+", "", name) or "App"
+    desktop_id = cfg.get("desktopId") or re.sub(r"\.android$", "", cfg["androidId"]) + ".desktop"
+
+    builder = ELECTRON / "electron-builder.json"
+
+    def fix_builder(t: str) -> str:
+        conf = json.loads(t)
+        conf["appId"] = desktop_id
+        conf["productName"] = name
+        conf["artifactName"] = f"{slug}-Setup-${{arch}}.${{ext}}"
+        # Своё имя пакета = своя папка настроек (%APPDATA%), не как у Outline.
+        conf.setdefault("extraMetadata", {})["name"] = slug.lower() + "-client"
+        nsis = conf.setdefault("nsis", {})
+        nsis.update({
+            "oneClick": False,
+            "allowToChangeInstallationDirectory": True,
+            "createDesktopShortcut": True,
+            "createStartMenuShortcut": True,
+            "shortcutName": name,
+            "uninstallDisplayName": name,
+            "runAfterFinish": True,
+        })
+        return json.dumps(conf, indent=2, ensure_ascii=False) + "\n"
+
+    edit(builder, fix_builder)
+
+    html_file = WEB / "index_electron.html"
+    edit(html_file, lambda t: sub_required(
+        t, r"(<title>).*?(</title>)", lambda m: m.group(1) + xml_escape(name) + m.group(2), html_file))
+
+    main_ts = ELECTRON / "index.ts"
+    edit(main_ts, lambda t: sub_required(
+        t, r"tray\.setToolTip\('[^']*'\)", f"tray.setToolTip('{name}')", main_ts))
+
+    routing = ELECTRON / "routing_service.ts"
+    edit(routing, lambda t: sub_required(
+        t, r"(sudo\.exec\(command, \{name: ')[^']*'", lambda m: m.group(1) + slug + "'", routing))
+
+    nsh = ELECTRON / "custom_install_steps.nsh"
+
+    def fix_nsh(t: str) -> str:
+        # Только тексты окон установщика; служба OutlineService не переименовывается.
+        def fix_line(m):
+            old = {prev["name"], UPSTREAM["name"]}
+            pattern = "|".join(re.escape(o) for o in old)
+            return re.sub(rf"\b(?:{pattern})\b(?!Service)", name, m.group(0))
+        return re.sub(r'MessageBox MB_OK "(?:[^"\\]|\\.|\\\n)*"', fix_line, t, flags=re.S)
+
+    edit(nsh, fix_nsh)
+
+
 def apply_images(cfg: dict, generate_platform_assets: bool) -> None:
     try:
         from PIL import Image
@@ -336,6 +391,13 @@ def apply_images(cfg: dict, generate_platform_assets: bool) -> None:
         web_assets=WEB / "assets",
         icon_art=art,
         icon_background=cfg.get("iconBackground"),
+    )
+    changed_files.extend(str(p.relative_to(ROOT)) for p in written)
+    written = brand_images.write_electron(
+        icon=CAP / "assets" / "icon.png",
+        primary=cfg["primaryColor"],
+        icons_dir=ELECTRON / "icons",
+        tray_dir=ROOT / "client" / "resources" / "tray",
     )
     changed_files.extend(str(p.relative_to(ROOT)) for p in written)
 
@@ -376,6 +438,7 @@ def main() -> None:
     apply_android(cfg)
     apply_ios(cfg, prev)
     apply_web(cfg, prev)
+    apply_electron(cfg, prev)
     if not args.no_images:
         apply_images(cfg, args.assets)
 

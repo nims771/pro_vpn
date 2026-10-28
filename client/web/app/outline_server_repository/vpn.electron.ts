@@ -25,6 +25,8 @@ export class ElectronVpnApi implements VpnApi {
     | null = null;
 
   private runningServerId: string | undefined;
+  // Fork: the server we are still connecting to, so that it can be cancelled.
+  private pendingServerId: string | undefined;
 
   constructor() {
     // This event is received when the proxy connects. It is mainly used for signaling the UI that
@@ -54,14 +56,24 @@ export class ElectronVpnApi implements VpnApi {
       return Promise.resolve();
     }
 
-    await methodChannel
-      .getDefaultMethodChannel()
-      .invokeMethod('StartProxying', JSON.stringify(request));
+    this.pendingServerId = request.id;
+    try {
+      await methodChannel
+        .getDefaultMethodChannel()
+        .invokeMethod('StartProxying', JSON.stringify(request));
+    } finally {
+      if (this.pendingServerId === request.id) {
+        this.pendingServerId = undefined;
+      }
+    }
   }
 
   async stop(id: string) {
-    if (this.runningServerId !== id) {
+    if (this.runningServerId !== id && this.pendingServerId !== id) {
       return;
+    }
+    if (this.pendingServerId === id) {
+      this.pendingServerId = undefined;
     }
 
     await methodChannel

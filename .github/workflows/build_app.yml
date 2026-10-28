@@ -5,12 +5,15 @@
 #   * если добавлены секреты ANDROID_KEY_STORE_CONTENTS и
 #     ANDROID_KEY_STORE_PASSWORD — подписанный релиз (universal.apk + .aab
 #     для Google Play).
+# Windows:
+#   * установщик ProVPN-...-Windows-Setup.exe (Windows 10/11, x64 и ARM);
+#     без платной подписи Windows покажет предупреждение SmartScreen.
 # iOS:
 #   * проверочная сборка без подписи (только чтобы убедиться, что проект
 #     собирается). Установить на iPhone её нельзя — для этого нужен Mac и
 #     Apple Developer, см. branding/README.md.
 #
-# Готовые файлы: вкладка Actions → нужный запуск → раздел Artifacts.
+# Готовые файлы: раздел Releases (тег latest) или Actions → запуск → Artifacts.
 
 name: Build app
 
@@ -30,7 +33,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write # публикация APK в Releases
+  contents: write # публикация APK и установщика Windows в Releases
 
 jobs:
   android:
@@ -97,11 +100,87 @@ jobs:
           name: android
           path: out/*
 
-      # Кладёт APK в раздел Releases: оттуда его удобно скачать прямо с телефона.
-      - name: Publish to Releases
+  windows:
+    name: Windows
+    runs-on: windows-2022 # windows-2025: node-gyp падает на Visual Studio 2026
+    timeout-minutes: 50
+    env:
+      VERSION: ${{ github.event.inputs.version || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '1.0.0' }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Support longpaths
+        run: git config --system core.longpaths true
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ./package-lock.json
+
+      - name: Install NPM dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: '${{ github.workspace }}/go.mod'
+
+      - name: Install zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.13.0
+          use-cache: false
+
+      - name: Normalize version
+        run: echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+
+      # ia32: один установщик для любых Windows 10/11 (x64 и ARM запускают его).
+      - name: Build installer
+        run: npm run action client/electron/build windows -- --arch ia32 --versionName="$VERSION"
+
+      - name: Collect files
+        run: |
+          mkdir -p out
+          ls -la output/client/electron/build
+          name=$(python -c "import json;print(json.load(open('branding/brand.json'))['name'].replace(' ','-'))")
+          cp output/client/electron/build/*-Setup-ia32.exe "out/${name}-${VERSION}-Windows-Setup.exe"
+          ls -la out
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
+
+  # Кладёт APK и установщик Windows в раздел Releases: оттуда их удобно скачать.
+  # Если Windows не собрался, APK всё равно публикуется.
+  publish:
+    name: Publish to Releases
+    needs: [android, windows]
+    if: always() && needs.android.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download files
+        uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          ls -la out
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="$GITHUB_REF_NAME"; title="$GITHUB_REF_NAME"; flags=""
           else
@@ -109,7 +188,7 @@ jobs:
             gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           fi
           gh release create "$tag" out/* --target "$GITHUB_SHA" --title "$title" $flags \
-            --notes "Сборка из коммита ${GITHUB_SHA::7}. Скачайте .apk на телефон и установите."
+            --notes "Сборка из коммита ${GITHUB_SHA::7}. Android: .apk — скачайте на телефон и установите. Windows: .exe — запустите установщик (нужны права администратора)."
 
   ios:
     name: iOS (проверка без подписи)

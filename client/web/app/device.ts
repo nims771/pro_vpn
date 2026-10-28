@@ -48,6 +48,10 @@ export function getDeviceInfo(): Promise<DeviceInfo> {
 }
 
 async function load(): Promise<DeviceInfo> {
+  // UI elements can ask while the bundle is still loading, before the platform
+  // layer has registered its source: let the entry script finish first, so
+  // every caller sees the same (real) device id.
+  await new Promise(resolve => setTimeout(resolve, 0));
   let raw: RawDeviceInfo | undefined;
   try {
     raw = await source?.();

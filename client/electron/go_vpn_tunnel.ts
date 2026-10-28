@@ -19,6 +19,7 @@ import {powerMonitor} from 'electron';
 import {pathToEmbeddedTun2socksBinary} from './app_paths';
 import {checkUDPConnectivity, checkUDPConnectivityWindows} from './go_helpers';
 import {ChildProcessHelper, ProcessTerminatedSignalError} from './process';
+import {parseTrafficStats} from './proclient';
 import {RoutingDaemon} from './routing_service';
 import {VpnTunnel} from './vpn_tunnel';
 import {TunnelStatus} from '../web/app/outline_server_repository/vpn';
@@ -51,6 +52,8 @@ export class GoVpnTunnel implements VpnTunnel {
 
   // See #resumeListener.
   private disconnected = false;
+  // Fork: set as soon as disconnect() is called, even while still connecting.
+  private cancelled = false;
 
   private isUdpEnabled = false;
   private gatewayAdapterIndex?: string;
@@ -121,10 +124,33 @@ export class GoVpnTunnel implements VpnTunnel {
       }
     }
     console.log(`UDP support: ${this.isUdpEnabled}`);
+    await this.throwIfCancelled();
 
     console.log('starting routing daemon');
     this.gatewayAdapterIndex = await this.routing.start();
+    await this.throwIfCancelled();
     await this.startTun2socks();
+    await this.throwIfCancelled();
+  }
+
+  // Fork: the user switched to another server (or pressed disconnect) while we
+  // were still connecting. Undo whatever got started in the meantime and stop,
+  // instead of finishing a connection nobody wants any more.
+  private async throwIfCancelled() {
+    if (!this.cancelled) {
+      return;
+    }
+    try {
+      await this.tun2socks.stop();
+    } catch {
+      // Not running.
+    }
+    try {
+      await this.routing.stop();
+    } catch {
+      // Not running.
+    }
+    throw new Error('connection cancelled');
   }
 
   networkChanged(status: TunnelStatus, gatewayIndex?: string) {
@@ -214,6 +240,7 @@ export class GoVpnTunnel implements VpnTunnel {
 
   // Use #onceDisconnected to be notified when the tunnel terminates.
   async disconnect() {
+    this.cancelled = true;
     if (this.disconnected) {
       return;
     }
@@ -333,7 +360,9 @@ class GoTun2socks {
       this.process.onStdOut = (data?: string | Buffer) => {
         if (data?.toString().includes('tun2socks running')) {
           console.debug('[tun2socks] - started');
-          this.process.onStdOut = null;
+          // Fork: keep reading stdout for the traffic counters.
+          this.process.onStdOut = parseTrafficStats;
+          parseTrafficStats(data);
           resolve();
         }
       };

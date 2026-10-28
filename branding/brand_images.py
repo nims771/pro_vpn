@@ -236,3 +236,54 @@ def write_all(name, primary, background, custom_icon, cap_assets: Path, web_asse
         recolor_circle(target, p)
         written.append(target)
     return written
+
+
+def _tray_icon(primary, connected: bool, size: int = 64) -> Image.Image:
+    """Щит для трея Windows: зелёный — подключено, серый контур — нет."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    big = size * SS
+    m = Image.new("L", (big, big), 0)
+    d = ImageDraw.Draw(m)
+    pts = [(0.5 + (x - 0.5) * 1.18, 0.5 + (y - 0.5) * 1.18) for x, y in _shield_points()]
+    d.polygon([(x * big, y * big) for x, y in pts], fill=255)
+    mask = m.resize((size, size), Image.LANCZOS)
+    color = primary if connected else (128, 128, 128)
+    img.paste(Image.new("RGBA", (size, size), color + (255,)), (0, 0), mask)
+    if connected:
+        # белая галочка
+        ck = Image.new("L", (big, big), 0)
+        dc = ImageDraw.Draw(ck)
+        dc.line([(0.32 * big, 0.50 * big), (0.45 * big, 0.63 * big), (0.70 * big, 0.36 * big)],
+                fill=255, width=int(0.10 * big), joint="curve")
+        img.paste(Image.new("RGBA", (size, size), (255, 255, 255, 255)), (0, 0),
+                  ck.resize((size, size), Image.LANCZOS))
+    else:
+        inner = Image.new("L", (big, big), 0)
+        di = ImageDraw.Draw(inner)
+        k = 0.80
+        pts2 = [(0.5 + (x - 0.5) * k, 0.5 + (y - 0.5) * k) for x, y in pts]
+        di.polygon([(x * big, y * big) for x, y in pts2], fill=255)
+        img.paste(Image.new("RGBA", (size, size), (0, 0, 0, 0)), (0, 0),
+                  inner.resize((size, size), Image.LANCZOS))
+    return img
+
+
+def write_electron(icon: Path, primary, icons_dir: Path, tray_dir: Path):
+    """Иконки версии для Windows/Linux (Electron) и значки трея."""
+    written = []
+    base = Image.open(icon).convert("RGBA")
+    png_dir = icons_dir / "png"
+    for size in (16, 24, 32, 48, 64, 128, 256, 512, 1024):
+        path = png_dir / f"{size}x{size}.png"
+        base.resize((size, size), Image.LANCZOS).save(path, optimize=True)
+        written.append(path)
+    ico = icons_dir / "win" / "icon.ico"
+    base.resize((256, 256), Image.LANCZOS).save(
+        ico, sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
+    written.append(ico)
+    p = _rgb(primary)
+    for name, connected in (("connected", True), ("disconnected", False)):
+        path = tray_dir / f"{name}.png"
+        _tray_icon(p, connected).save(path, optimize=True)
+        written.append(path)
+    return written

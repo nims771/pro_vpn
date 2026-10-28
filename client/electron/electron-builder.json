@@ -1,12 +1,12 @@
 {
-  "productName": "Outline",
-  "artifactName": "Outline-Client-${arch}.${ext}",
+  "productName": "ProVPN",
+  "artifactName": "ProVPN-Setup-${arch}.${ext}",
   "directories": {
     "buildResources": "output/client/electron",
     "output": "output/client/electron/build"
   },
   "extraMetadata": {
-    "name": "outline-client",
+    "name": "provpn-client",
     "main": "output/client/electron/index.js"
   },
   "files": [
@@ -33,7 +33,14 @@
   },
   "nsis": {
     "include": "client/electron/custom_install_steps.nsh",
-    "perMachine": true
+    "perMachine": true,
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "ProVPN",
+    "uninstallDisplayName": "ProVPN",
+    "runAfterFinish": true
   },
   "win": {
     "icon": "client/electron/icons/win/icon.ico",
@@ -43,5 +50,6 @@
         "sha256"
       ]
     }
-  }
+  },
+  "appId": "com.proclient.desktop"
 }
