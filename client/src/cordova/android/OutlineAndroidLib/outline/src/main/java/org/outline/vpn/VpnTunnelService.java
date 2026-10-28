@@ -40,6 +40,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -108,6 +112,21 @@ public class VpnTunnelService extends VpnService {
   private NetworkConnectivityMonitor networkConnectivityMonitor;
   private VpnTunnelStore tunnelStore;
   private Notification.Builder notificationBuilder;
+
+  // Fork: connection watchdog. While the tunnel is up it periodically checks that the
+  // server still relays traffic. If it doesn't (e.g. the server IP got blocked), it
+  // reports RECONNECTING and re-creates the connection to the server, retrying with
+  // back-off until it works again. The TUN device stays up the whole time, so traffic
+  // does not leak outside the VPN while reconnecting.
+  private static final long WATCHDOG_INTERVAL_SEC = 20;
+  private static final int WATCHDOG_FAILURES_BEFORE_RECONNECT = 2;
+  private static final long[] WATCHDOG_BACKOFF_SEC = {3, 5, 10, 20, 30};
+  private final ScheduledExecutorService watchdogExecutor =
+      Executors.newSingleThreadScheduledExecutor();
+  private ScheduledFuture<?> watchdogTask;
+  private int watchdogFailures = 0;
+  private int watchdogReconnectAttempts = 0;
+  private volatile boolean underlyingNetworkAvailable = true;
 
   private final IVpnTunnelService.Stub binder = new IVpnTunnelService.Stub() {
     @Override
@@ -196,6 +215,7 @@ public class VpnTunnelService extends VpnService {
     LOG.info("Destroying VPN service.");
     broadcastVpnConnectivityChange(TunnelStatus.DISCONNECTED);
     tearDownActiveTunnel();
+    watchdogExecutor.shutdownNow();
   }
 
   // Tunnel API
@@ -319,6 +339,137 @@ public class VpnTunnelService extends VpnService {
     startNetworkConnectivityMonitor();
     startForegroundWithNotification(config.name);
     storeActiveTunnel(config);
+    startWatchdog();
+    return null;
+  }
+
+  // Watchdog
+
+  private synchronized void startWatchdog() {
+    stopWatchdog();
+    watchdogFailures = 0;
+    watchdogReconnectAttempts = 0;
+    scheduleWatchdog(WATCHDOG_INTERVAL_SEC);
+    LOG.info("Connection watchdog started.");
+  }
+
+  private synchronized void stopWatchdog() {
+    if (watchdogTask != null) {
+      watchdogTask.cancel(false);
+      watchdogTask = null;
+    }
+  }
+
+  private synchronized void scheduleWatchdog(long delaySec) {
+    if (watchdogTask != null) {
+      watchdogTask.cancel(false);
+    }
+    try {
+      watchdogTask =
+          watchdogExecutor.schedule(this::runWatchdogCheck, delaySec, TimeUnit.SECONDS);
+    } catch (Exception e) {
+      // Executor already shut down (service destroyed).
+      watchdogTask = null;
+    }
+  }
+
+  /** Runs on the watchdog thread. */
+  private void runWatchdogCheck() {
+    final RemoteDevice device;
+    synchronized (this) {
+      if (this.tunnelConfig == null || this.tunFd == null) {
+        return; // Tunnel stopped; the watchdog ends here.
+      }
+      // May be null if the previous reconnect attempt failed; then we retry below.
+      device = this.remoteDevice;
+    }
+    if (!underlyingNetworkAvailable) {
+      // No internet at all: nothing to fix by reconnecting. Check again later.
+      scheduleWatchdog(WATCHDOG_INTERVAL_SEC);
+      return;
+    }
+
+    // Can take up to ~10s, so it runs without holding the service lock.
+    PlatformError healthErr;
+    if (device == null) {
+      healthErr = new PlatformError(Platerrors.InternalError, "no connection to the server");
+    } else {
+      try {
+        healthErr = device.checkHealth();
+      } catch (Exception e) {
+        healthErr = new PlatformError(Platerrors.InternalError, String.valueOf(e));
+      }
+    }
+
+    synchronized (this) {
+      if (this.tunnelConfig == null || this.tunFd == null || device != this.remoteDevice) {
+        return; // The tunnel was stopped or replaced meanwhile.
+      }
+      if (healthErr == null) {
+        if (watchdogReconnectAttempts > 0) {
+          LOG.info("Watchdog: server reachable again, connection restored.");
+          broadcastVpnConnectivityChange(TunnelStatus.CONNECTED);
+          updateNotification(TunnelStatus.CONNECTED);
+        }
+        watchdogFailures = 0;
+        watchdogReconnectAttempts = 0;
+        scheduleWatchdog(WATCHDOG_INTERVAL_SEC);
+        return;
+      }
+
+      watchdogFailures++;
+      LOG.log(Level.WARNING, String.format(Locale.ROOT,
+          "Watchdog: health check failed (%d)", watchdogFailures), healthErr);
+      if (watchdogFailures < WATCHDOG_FAILURES_BEFORE_RECONNECT
+          && watchdogReconnectAttempts == 0) {
+        // Re-check soon before deciding the server is really gone.
+        scheduleWatchdog(WATCHDOG_BACKOFF_SEC[0]);
+        return;
+      }
+
+      broadcastVpnConnectivityChange(TunnelStatus.RECONNECTING);
+      updateNotification(TunnelStatus.RECONNECTING);
+      final PlatformError restartErr = restartRemoteDevice();
+      if (restartErr != null) {
+        LOG.log(Level.WARNING, "Watchdog: reconnect failed", restartErr);
+      } else {
+        LOG.info("Watchdog: reconnected to the server, verifying…");
+      }
+      final int idx = Math.min(watchdogReconnectAttempts, WATCHDOG_BACKOFF_SEC.length - 1);
+      watchdogReconnectAttempts++;
+      scheduleWatchdog(WATCHDOG_BACKOFF_SEC[idx]);
+    }
+  }
+
+  /**
+   * Re-creates the connection to the server with the current config, keeping the VPN
+   * interface up. Must be called with the service lock held.
+   */
+  @Nullable
+  private PlatformError restartRemoteDevice() {
+    final TunnelConfig config = this.tunnelConfig;
+    if (config == null || this.tunFd == null) {
+      return new PlatformError(Platerrors.InternalError, "tunnel is not active");
+    }
+    this.stopRemoteDevice();
+
+    final ClientConfig clientConfig = new ClientConfig();
+    clientConfig.setDataDir(this.getFilesDir().getAbsolutePath());
+    final NewClientResult clientResult = clientConfig.new_(config.id, config.transportConfig);
+    if (clientResult.getError() != null) {
+      return clientResult.getError();
+    }
+    final ConnectRemoteDeviceResult result =
+        Tun2socks.connectRemoteDevice(clientResult.getClient());
+    if (result.getError() != null) {
+      return result.getError();
+    }
+    this.remoteDevice = result.getDevice();
+    final PlatformError relayErr = Tun2socks.goRelayTraffic(this.tunFd.getFd(), this.remoteDevice);
+    if (relayErr != null) {
+      this.stopRemoteDevice();
+      return relayErr;
+    }
     return null;
   }
 
@@ -343,6 +494,8 @@ public class VpnTunnelService extends VpnService {
 
   /** Helper method to tear down an active tunnel. */
   private void tearDownActiveTunnel() {
+    stopWatchdog();
+
     // Stop monitoring network changes.
     try {
       final ConnectivityManager connectivityManager =
@@ -416,6 +569,18 @@ public class VpnTunnelService extends VpnService {
       if (VpnTunnelService.this.remoteDevice != null) {
         VpnTunnelService.this.remoteDevice.notifyNetworkChanged();
       }
+
+      // Network is back (or switched, e.g. Wi-Fi -> mobile): let the watchdog verify the
+      // server soon instead of waiting for the regular interval.
+      final boolean wasOffline = !underlyingNetworkAvailable;
+      underlyingNetworkAvailable = true;
+      synchronized (VpnTunnelService.this) {
+        if (VpnTunnelService.this.tunnelConfig != null
+            && (wasOffline || watchdogReconnectAttempts > 0)) {
+          watchdogFailures = 0;
+          scheduleWatchdog(WATCHDOG_BACKOFF_SEC[0]);
+        }
+      }
     }
 
     @Override
@@ -427,6 +592,7 @@ public class VpnTunnelService extends VpnService {
           && activeNetworkInfo.getState() == NetworkInfo.State.CONNECTED) {
         return;
       }
+      underlyingNetworkAvailable = false;
       broadcastVpnConnectivityChange(TunnelStatus.RECONNECTING);
       updateNotification(TunnelStatus.RECONNECTING);
     }

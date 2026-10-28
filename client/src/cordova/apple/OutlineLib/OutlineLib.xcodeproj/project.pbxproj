@@ -507,7 +507,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.myvpn.ios.VpnExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.proclient.ios.VpnExtension;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]" = org.outline.macos.client.VpnExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -544,7 +544,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.myvpn.ios.VpnExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.proclient.ios.VpnExtension;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]" = org.outline.macos.client.VpnExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

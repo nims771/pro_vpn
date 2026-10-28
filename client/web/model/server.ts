@@ -40,6 +40,10 @@ export interface Server {
 
   // Checks whether the server is already active and in use.
   checkRunning(): Promise<boolean>;
+
+  // Fork: re-fetches a dynamic access key's config and reconnects if it changed.
+  // Returns whether it reconnected. Static keys return false.
+  refreshIfChanged?(): Promise<boolean>;
 }
 
 export interface ServerRepository {

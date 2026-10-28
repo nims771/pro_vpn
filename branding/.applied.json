@@ -1,8 +1,8 @@
 {
-  "name": "MyVPN",
-  "androidId": "com.myvpn.android",
-  "iosId": "com.myvpn.ios",
-  "appGroup": "group.com.myvpn.ios",
+  "name": "ProClient",
+  "androidId": "com.proclient.android",
+  "iosId": "com.proclient.ios",
+  "appGroup": "group.com.proclient.ios",
   "supportUrl": "https://support.getoutline.org",
   "getKeyUrl": "https://s3.amazonaws.com/outline-vpn/get-started/#step-1"
 }

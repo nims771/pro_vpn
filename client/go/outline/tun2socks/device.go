@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"localhost/client/go/outline"
+	"localhost/client/go/outline/connectivity"
 	perrs "localhost/client/go/outline/platerrors"
 	"localhost/client/go/outline/vpn"
 )
@@ -72,6 +73,15 @@ func ConnectRemoteDevice(client *outline.Client) (res *ConnectRemoteDeviceResult
 
 func (d *RemoteDevice) GetHealthStatus() *perrs.PlatformError {
 	return perrs.ToPlatformError(d.rd.GetHealthStatus())
+}
+
+// CheckHealth runs a fresh TCP connectivity check through the server while the
+// tunnel is up. Unlike GetHealthStatus, which only reports the check made at
+// connection time, this can be called periodically by the platform watchdog to
+// detect a server that stopped relaying traffic (for example, its IP got blocked).
+// It blocks for up to ~10 seconds.
+func (d *RemoteDevice) CheckHealth() *perrs.PlatformError {
+	return perrs.ToPlatformError(connectivity.CheckTCPConnectivity(d.client))
 }
 
 func (d *RemoteDevice) Write(p []byte) (int, error) {

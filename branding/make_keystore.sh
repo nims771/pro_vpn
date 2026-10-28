@@ -26,7 +26,7 @@ read -r -s -p "Повторите пароль: " PASS2; echo
 [ "$PASS" = "$PASS2" ] || { echo "Пароли не совпадают." >&2; exit 1; }
 [ ${#PASS} -ge 6 ] || { echo "Слишком короткий пароль." >&2; exit 1; }
 
-NAME=$(python3 -c "import json;print(json.load(open('brand.json'))['name'])" 2>/dev/null || echo "MyVPN")
+NAME=$(python3 -c "import json;print(json.load(open('brand.json'))['name'])" 2>/dev/null || echo "ProClient")
 
 # Сборка Outline ждёт PKCS#12 с алиасом privatekey (см. client/capacitor/README.md).
 keytool -genkeypair -v \

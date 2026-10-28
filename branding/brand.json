@@ -1,8 +1,8 @@
 {
-  "name": "MyVPN",
-  "androidId": "com.myvpn.android",
-  "iosId": "com.myvpn.ios",
-  "appGroup": "group.com.myvpn.ios",
+  "name": "ProClient",
+  "androidId": "com.proclient.android",
+  "iosId": "com.proclient.ios",
+  "appGroup": "group.com.proclient.ios",
   "primaryColor": "#3B82F6",
   "backgroundColor": "#0B1220",
   "icon": "",

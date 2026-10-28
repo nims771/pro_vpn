@@ -42,7 +42,7 @@ android {
         // app's data directory, which only happens on a same-id upgrade.
         // (namespace stays org.outline.client — that is the code package, not the
         // install identity.)
-        applicationId "com.myvpn.android"
+        applicationId "com.proclient.android"
         minSdk rootProject.ext.minSdkVersion
         targetSdk 36
         // Release builds get their version from client/capacitor/build.action.mjs,

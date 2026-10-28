@@ -92,22 +92,51 @@ class OutlineServer implements Server {
   }
 
   async connect() {
-    let connectionType: ConnectionType;
     if (this.serviceConfig instanceof DynamicServiceConfig) {
       const tunnelConfig = await fetchTunnelConfig(
         this.serviceConfig.transportConfigLocation
       );
-      this.startRequest = {
-        id: this.id,
-        name: this.name,
-        firstHop: tunnelConfig.firstHop,
-        client: tunnelConfig.client,
-      };
-      connectionType = tunnelConfig.connectionType;
-    } else {
-      connectionType = this.serviceConfig.connectionType;
+      return this.connectWithTunnelConfig(tunnelConfig);
     }
+    return this.start(this.serviceConfig.connectionType);
+  }
 
+  /**
+   * Fork: for dynamic keys (ssconf://), fetches the config again and reconnects
+   * only if the provider changed it (e.g. moved the server to a new, unblocked
+   * address). Returns whether it reconnected.
+   */
+  async refreshIfChanged(): Promise<boolean> {
+    if (!(this.serviceConfig instanceof DynamicServiceConfig)) {
+      return false;
+    }
+    const tunnelConfig = await fetchTunnelConfig(
+      this.serviceConfig.transportConfigLocation
+    );
+    if (
+      this.startRequest &&
+      this.startRequest.firstHop === tunnelConfig.firstHop &&
+      this.startRequest.client === tunnelConfig.client
+    ) {
+      return false;
+    }
+    await this.connectWithTunnelConfig(tunnelConfig);
+    return true;
+  }
+
+  private async connectWithTunnelConfig(
+    tunnelConfig: FirstHopAndTunnelConfigJson
+  ) {
+    this.startRequest = {
+      id: this.id,
+      name: this.name,
+      firstHop: tunnelConfig.firstHop,
+      client: tunnelConfig.client,
+    };
+    return this.start(tunnelConfig.connectionType);
+  }
+
+  private async start(connectionType: ConnectionType) {
     // Make sure the transport is not proxyless for now.
     // TODO remove this when proxyless is supported on the frontend
     if (this.startRequest && connectionType === ConnectionType.DIRECT) {

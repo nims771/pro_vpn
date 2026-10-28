@@ -1,6 +1,6 @@
 {
-    "appId": "com.myvpn.ios",
-    "appName": "MyVPN",
+    "appId": "com.proclient.ios",
+    "appName": "ProClient",
     "webDir": "www",
     "bundledWebRuntime": false,
     "server": {

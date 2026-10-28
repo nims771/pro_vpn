@@ -682,13 +682,69 @@ export class App {
 
   private onServerConnected(event: events.ServerConnected): void {
     console.debug(`server ${event.serverId} connected`);
+    this.clearStuckReconnectTimer(event.serverId);
     this.updateServerListItem(event.serverId, {
       connectionState: ServerConnectionState.CONNECTED,
     });
   }
 
+  // Fork: the Android VPN service reconnects by itself when the server stops
+  // responding. If it stays unreachable for a while and the key is dynamic
+  // (ssconf://), ask the provider for a fresh config: it may have moved the
+  // server to a new, unblocked address.
+  private static readonly STUCK_RECONNECT_REFRESH_MS = 60_000;
+  private stuckReconnectTimers = new Map<string, number>();
+
+  private scheduleStuckReconnectRefresh(serverId: string) {
+    if (this.stuckReconnectTimers.has(serverId)) return;
+    this.stuckReconnectTimers.set(
+      serverId,
+      window.setTimeout(() => {
+        void this.refreshStuckServer(serverId);
+      }, App.STUCK_RECONNECT_REFRESH_MS)
+    );
+  }
+
+  private clearStuckReconnectTimer(serverId: string) {
+    const timer = this.stuckReconnectTimers.get(serverId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      this.stuckReconnectTimers.delete(serverId);
+    }
+  }
+
+  private async refreshStuckServer(serverId: string) {
+    this.stuckReconnectTimers.delete(serverId);
+    const server = this.serverRepo.getById(serverId);
+    const card = (this.rootEl.servers as ServerListItem[]).find(
+      s => s.id === serverId
+    );
+    if (
+      !server?.refreshIfChanged ||
+      card?.connectionState !== ServerConnectionState.RECONNECTING
+    ) {
+      return;
+    }
+    try {
+      if (await server.refreshIfChanged()) {
+        console.log(
+          `server ${serverId}: switched to the provider's new config`
+        );
+        this.updateServerListItem(serverId, {
+          connectionState: ServerConnectionState.CONNECTED,
+          address: server.address,
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn(`server ${serverId}: config refresh failed: ${e}`);
+    }
+    this.scheduleStuckReconnectRefresh(serverId);
+  }
+
   private onServerDisconnected(event: events.ServerDisconnected): void {
     console.debug(`server ${event.serverId} disconnected`);
+    this.clearStuckReconnectTimer(event.serverId);
     try {
       this.updateServerListItem(event.serverId, {
         connectionState: ServerConnectionState.DISCONNECTED,
@@ -712,6 +768,7 @@ export class App {
     this.updateServerListItem(event.serverId, {
       connectionState: ServerConnectionState.RECONNECTING,
     });
+    this.scheduleStuckReconnectRefresh(event.serverId);
   }
 
   private onServerAdded(event: events.ServerAdded) {

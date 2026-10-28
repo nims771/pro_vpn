@@ -21,8 +21,10 @@ import {createRef, Ref, ref} from 'lit/directives/ref.js';
 import '../../server_connection_indicator';
 import './server_rename_dialog';
 import './server_info_dialog';
+import '../proclient_ui';
 import {ServerListItem, ServerListItemElement, ServerListItemEvent} from '..';
 import {ServerConnectionState} from '../../server_connection_indicator';
+import {maskAddress} from '../proclient_ui';
 
 const sharedCSS = css`
   /* TODO(daniellacosse): reset via postcss */
@@ -139,6 +141,59 @@ const sharedCSS = css`
 
     text-transform: uppercase;
   }
+
+  /* Fork: connection status line ("● Подключен · 00:12:34"). */
+  .card-status {
+    align-items: center;
+    color: var(--outline-label-color);
+    display: flex;
+    font-family: var(--outline-font-family);
+    font-size: var(--server-address-size);
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  /* the shared reset above sets "all: initial" on spans */
+  .card-status > span:not(.card-status-dot) {
+    color: inherit;
+    font: inherit;
+  }
+
+  .card-status-dot {
+    background: var(--outline-medium-gray, #9e9e9e);
+    border-radius: 50%;
+    display: inline-block;
+    flex: none;
+    height: 8px;
+    transition: background 0.3s ease;
+    width: 8px;
+  }
+
+  .card-status[data-state='connected'] {
+    color: var(--outline-primary);
+  }
+
+  .card-status[data-state='connected'] .card-status-dot {
+    background: var(--outline-primary);
+    box-shadow: 0 0 0 3px rgba(var(--outline-primary-rgb), 0.2);
+  }
+
+  .card-status[data-state='connecting'] .card-status-dot,
+  .card-status[data-state='reconnecting'] .card-status-dot {
+    animation: status-blink 1s ease-in-out infinite;
+    background: var(--outline-warning, #f9c800);
+  }
+
+  .card-status connection-timer {
+    color: var(--outline-text-color);
+    font-family: var(--outline-font-family);
+  }
+
+  @keyframes status-blink {
+    50% {
+      opacity: 0.3;
+    }
+  }
 `;
 
 // TODO(daniellacosse): wrap components in a closure to avoid unnecessary work
@@ -157,7 +212,12 @@ const getSharedComponents = (element: ServerListItemElement & LitElement) => {
     connectButton: localize(
       isConnectedState ? 'disconnect-button-label' : 'connect-button-label'
     ),
+    status: localize(`${server.connectionState}-server-state`),
   };
+
+  const isUp =
+    server.connectionState === ServerConnectionState.CONNECTED ||
+    server.connectionState === ServerConnectionState.RECONNECTING;
 
   const dispatchers = {
     beginRename: () => (element.isRenameDialogOpen = true),
@@ -219,9 +279,38 @@ const getSharedComponents = (element: ServerListItemElement & LitElement) => {
           <h2 class="card-metadata-server-name" id="server-name">
             ${messages.serverName}
           </h2>
-          <label class="card-metadata-server-address">${server.address}</label>
+          <label class="card-metadata-server-address"
+            >${maskAddress(server.address)}</label
+          >
         </div>
       `,
+      status: html`
+        <div class="card-status" data-state=${server.connectionState}>
+          <span class="card-status-dot"></span>
+          <span>${messages.status}</span>
+          ${isUp ? html`<span>·</span>` : ''}
+          <connection-timer
+            server-id=${server.id}
+            connection-state=${server.connectionState}
+          ></connection-timer>
+        </div>
+      `,
+      powerButton: (size: 'large' | 'small') => html`
+        <power-button
+          size=${size}
+          connection-state=${server.connectionState}
+          label=${messages.connectButton}
+          ?disabled=${hasErrorMessage}
+          @click=${() => !hasErrorMessage && dispatchers.connectToggle()}
+        ></power-button>
+      `,
+      // Fork: the footer now only shows errors; the power button replaces the
+      // old "CONNECT" text button.
+      errorFooter: hasErrorMessage
+        ? html`<footer class="card-footer">
+            <span class="card-error">${messages.error}</span>
+          </footer>`
+        : '',
       menu: html`
         <md-menu
           ${ref(menu)}
@@ -298,16 +387,29 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
             var(--outline-slim-gutter)
         );
 
-        grid-template-columns: 0 1fr auto 0;
-        grid-template-rows: 0 minmax(0, 1fr) auto;
+        /* Fork: name/address/status | square power button | menu */
+        grid-template-columns: 0 1fr auto auto 0;
+        grid-template-rows: 0 minmax(0, 1fr) 0 auto;
         grid-template-areas:
-          '. . . .'
-          '. metadata menu .'
-          'footer footer footer footer';
+          '. . . . .'
+          '. metadata button menu .'
+          '. . . . .'
+          'footer footer footer footer footer';
       }
 
-      server-connection-indicator {
-        float: left;
+      .card-metadata {
+        padding: var(--outline-slim-gutter) 0;
+      }
+
+      .card-row-button {
+        grid-area: button;
+        display: flex;
+        align-items: center;
+      }
+
+      .card-menu-button {
+        align-self: center;
+        margin-right: -8px;
       }
     `,
   ];
@@ -318,13 +420,10 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
     return html`
       <div class="card">
         <div class="card-metadata" aria-labelledby="server-name">
-          <server-connection-indicator
-            ?darkMode=${this.darkMode}
-            connection-state="${this.server.connectionState}"
-          ></server-connection-indicator>
-          ${elements.metadataText}
+          <div>${elements.metadataText} ${elements.status}</div>
         </div>
-        ${elements.menuButton} ${elements.footer}
+        <div class="card-row-button">${elements.powerButton('small')}</div>
+        ${elements.menuButton} ${elements.errorFooter}
       </div>
       ${elements.menu} ${elements.renameDialog}
     `;
@@ -381,33 +480,32 @@ export class ServerHeroCard
         padding: var(--outline-large-gutter) 0;
       }
 
-      server-connection-indicator {
-        cursor: pointer;
-      }
-
+      /* Fork: big rounded-square button, status and timer under it. */
       .card-connection-label {
         color: var(--outline-label-color);
-        font-size: var(--server-address-size);
+        font-size: 0.95rem;
         font-family: var(--outline-font-family);
-        padding-top: 0.5rem;
+        padding-top: 1.25rem;
+        transition: color 0.3s ease;
+      }
+
+      .card-connection-label[data-state='connected'] {
+        color: var(--outline-primary);
+        font-weight: 500;
+      }
+
+      .card-connection-timer {
+        color: var(--outline-text-color);
+        font-family: var(--outline-font-family);
+        font-size: 2rem;
+        font-weight: 300;
+        min-height: 2.5rem;
       }
     `,
   ];
 
   render() {
-    const {elements, dispatchers, messages} = getSharedComponents(this);
-
-    const connectionStatusText = this.localize(
-      `${this.server.connectionState}-server-state`
-    );
-    const connectToggleKeyboardDispatcher = (event: KeyboardEvent) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      if (event.key === 'Enter') {
-        dispatchers.connectToggle();
-      }
-    };
+    const {elements, messages} = getSharedComponents(this);
 
     return html`
       <div class="card">
@@ -416,21 +514,20 @@ export class ServerHeroCard
         </div>
         ${elements.menuButton}
         <div class="card-connection-button-container">
-          <server-connection-indicator
-            @click="${!this.server.errorMessageId && dispatchers.connectToggle}"
-            @keydown="${connectToggleKeyboardDispatcher}"
-            connection-state="${this.server.connectionState}"
-            ?darkMode="${this.darkMode}"
-            id="${messages.connectButton}"
-            role="button"
-            tabindex="0"
-            title="${connectionStatusText}"
-          ></server-connection-indicator>
-          <label class="card-connection-label" for="${messages.connectButton}">
-            ${connectionStatusText}
+          ${elements.powerButton('large')}
+          <label
+            class="card-connection-label"
+            data-state=${this.server.connectionState}
+          >
+            ${messages.status}
           </label>
+          <connection-timer
+            class="card-connection-timer"
+            server-id=${this.server.id}
+            connection-state=${this.server.connectionState}
+          ></connection-timer>
         </div>
-        ${elements.footer}
+        ${elements.errorFooter}
       </div>
       ${elements.menu} ${elements.renameDialog}
     `;
