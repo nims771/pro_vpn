@@ -1,0 +1,24 @@
+node_modules
+.idea
+.task
+.vs/
+*.DS_Store
+*.env
+*.pdb
+*.sw?
+/server_manager/node_modules
+/server_manager/install_scripts/do_install_script.ts
+/server_manager/install_scripts/gcp_install_script.ts
+/output
+/build
+
+*storybook.log
+
+
+
+# Capacitor web build output
+client/capacitor/www/
+
+# Fork: signing keys and local state
+branding/release-keystore.*
+branding/__pycache__/

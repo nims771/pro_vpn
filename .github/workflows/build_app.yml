@@ -1,0 +1,142 @@
+# Сборка приложения в облаке GitHub — без Android Studio и без Mac у себя.
+#
+# Android:
+#   * без секретов собирается debug-APK (ставится на любой телефон);
+#   * если добавлены секреты ANDROID_KEY_STORE_CONTENTS и
+#     ANDROID_KEY_STORE_PASSWORD — подписанный релиз (universal.apk + .aab
+#     для Google Play).
+# iOS:
+#   * проверочная сборка без подписи (только чтобы убедиться, что проект
+#     собирается). Установить на iPhone её нельзя — для этого нужен Mac и
+#     Apple Developer, см. branding/README.md.
+#
+# Готовые файлы: вкладка Actions → нужный запуск → раздел Artifacts.
+
+name: Build app
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия (например 1.0.0)'
+        required: true
+        default: '1.0.0'
+      ios:
+        description: 'Также проверить сборку iOS (macOS-раннер, дольше)'
+        type: boolean
+        default: false
+  push:
+    branches: [main, master]
+    tags: ['v*']
+
+permissions:
+  contents: write # публикация APK в Releases
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ github.event.inputs.version || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '1.0.0' }}
+      ANDROID_KEY_STORE_CONTENTS: ${{ secrets.ANDROID_KEY_STORE_CONTENTS }}
+      ANDROID_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ./package-lock.json
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: '${{ github.workspace }}/go.mod'
+
+      - name: Use JDK 21
+        run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      - name: Install NPM dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Normalize version
+        run: echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Build debug APK
+        if: env.ANDROID_KEY_STORE_CONTENTS == ''
+        run: npm run action client/capacitor/build android
+
+      - name: Build signed release
+        if: env.ANDROID_KEY_STORE_CONTENTS != ''
+        run: npm run action client/capacitor/build android -- --buildMode=release --versionName="$VERSION"
+
+      - name: Collect files
+        run: |
+          mkdir -p out
+          name=$(python3 -c "import json;print(json.load(open('branding/brand.json'))['name'].replace(' ','-'))")
+          if [ -n "$ANDROID_KEY_STORE_CONTENTS" ]; then
+            d=client/capacitor/android/app/build/outputs/bundle/release
+            cp "$d/universal.apk" "out/${name}-${VERSION}.apk"
+            cp "$d/app-release.aab" "out/${name}-${VERSION}.aab"
+          else
+            cp client/capacitor/android/app/build/outputs/apk/debug/app-debug.apk "out/${name}-${VERSION}-debug.apk"
+          fi
+          ls -la out
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/*
+
+      # Кладёт APK в раздел Releases: оттуда его удобно скачать прямо с телефона.
+      - name: Publish to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="$GITHUB_REF_NAME"; title="$GITHUB_REF_NAME"; flags=""
+          else
+            tag="latest"; title="Последняя сборка"; flags="--prerelease"
+            gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          fi
+          gh release create "$tag" out/* --target "$GITHUB_SHA" --title "$title" $flags \
+            --notes "Сборка из коммита ${GITHUB_SHA::7}. Скачайте .apk на телефон и установите."
+
+  ios:
+    name: iOS (проверка без подписи)
+    if: github.event.inputs.ios == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ./package-lock.json
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: '${{ github.workspace }}/go.mod'
+
+      - name: Install NPM dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Build iOS (unsigned)
+        run: npm run action client/capacitor/build ios
