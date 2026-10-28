@@ -644,6 +644,17 @@ export class App {
     });
     try {
       await server.connect();
+      // Fork: only one tunnel can run; connecting here replaced any other.
+      for (const other of this.rootEl.servers as ServerListItem[]) {
+        if (
+          other.id !== serverId &&
+          other.connectionState !== ServerConnectionState.DISCONNECTED
+        ) {
+          this.updateServerListItem(other.id, {
+            connectionState: ServerConnectionState.DISCONNECTED,
+          });
+        }
+      }
       this.updateServerListItem(serverId, {
         connectionState: ServerConnectionState.CONNECTED,
         address: server.address,

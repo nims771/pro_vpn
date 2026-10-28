@@ -46,29 +46,22 @@ export class ServerList extends LitElement {
 
   @property({type: Object}) localize: Localizer = msg => msg;
   @property({type: Array}) servers: ServerListItem[] = [];
+  /** Fork: id of the server the bottom connect button acts on. */
+  @property({type: String}) selectedId = '';
 
+  // Fork: one compact card per server (also when there is only one); the
+  // connect button lives at the bottom of the screen.
   render() {
-    if (this.hasSingleServer) {
-      return html`<server-hero-card
-        ?darkMode=${this.darkMode}
-        .localize=${this.localize}
-        .server=${this.servers[0]}
-      ></server-hero-card>`;
-    } else {
-      return html`
-        ${this.servers.map(
-          server =>
-            html`<server-row-card
-              ?darkMode=${this.darkMode}
-              .localize=${this.localize}
-              .server=${server}
-            ></server-row-card>`
-        )}
-      `;
-    }
-  }
-
-  private get hasSingleServer() {
-    return this.servers.length === 1;
+    return html`
+      ${this.servers.map(
+        server =>
+          html`<server-row-card
+            ?darkMode=${this.darkMode}
+            ?selected=${server.id === this.selectedId}
+            .localize=${this.localize}
+            .server=${server}
+          ></server-row-card>`
+      )}
+    `;
   }
 }

@@ -18,7 +18,7 @@ import '@material/mwc-button';
 
 import {Localizer} from '@outline/infrastructure/i18n';
 import {css, html, LitElement} from 'lit';
-import {customElement, property} from 'lit/decorators.js';
+import {customElement, property, state} from 'lit/decorators.js';
 import {DirectiveResult} from 'lit/directive';
 import {unsafeHTML, UnsafeHTMLDirective} from 'lit/directives/unsafe-html.js';
 
@@ -26,6 +26,7 @@ import {ServerConnectionState as _ServerConnectionState} from './server_connecti
 import './server_connection_indicator';
 import './server_list';
 import './proclient_panel';
+import './server_list_item/proclient_ui';
 import {ServerListItem as _ServerListItem} from './server_list_item';
 
 export type ServerListItem = _ServerListItem;
@@ -116,8 +117,131 @@ export class ServerList extends LitElement {
         margin-bottom: 34px;
         width: 192px;
       }
+
+      /* Fork: the single connect button pinned to the bottom of the page. */
+      .connect-bar {
+        background: linear-gradient(
+          to top,
+          var(--outline-background) 75%,
+          transparent
+        );
+        bottom: 0;
+        box-sizing: border-box;
+        margin-top: auto;
+        padding: 16px 12px max(14px, env(safe-area-inset-bottom));
+        position: sticky;
+        z-index: 2;
+      }
     `,
   ];
+
+  // Fork: which server the bottom button connects to (persisted).
+  @state() private chosenServerId = readChosenServer();
+
+  private static readonly ACTIVE_STATES = [
+    ServerConnectionState.CONNECTING,
+    ServerConnectionState.CONNECTED,
+    ServerConnectionState.RECONNECTING,
+    ServerConnectionState.DISCONNECTING,
+  ];
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.addEventListener('ProclientSelectServer', this.onSelectServer);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.removeEventListener('ProclientSelectServer', this.onSelectServer);
+  }
+
+  /** The server that is connected (or connecting), if any. */
+  private get activeServer(): ServerListItem | undefined {
+    return this.servers?.find(s =>
+      ServerList.ACTIVE_STATES.includes(s.connectionState)
+    );
+  }
+
+  /** The server the bottom button acts on. */
+  private get targetServer(): ServerListItem | undefined {
+    return (
+      this.activeServer ??
+      this.servers?.find(s => s.id === this.chosenServerId) ??
+      this.servers?.[0]
+    );
+  }
+
+  private onSelectServer = (event: Event) => {
+    const serverId = (event as CustomEvent).detail?.serverId;
+    if (!serverId) return;
+    this.chosenServerId = serverId;
+    writeChosenServer(serverId);
+
+    // Already connected to another server: switch to the chosen one.
+    const active = this.activeServer;
+    if (
+      active &&
+      active.id !== serverId &&
+      (active.connectionState === ServerConnectionState.CONNECTED ||
+        active.connectionState === ServerConnectionState.RECONNECTING)
+    ) {
+      this.fireServerEvent('ConnectPressed', serverId);
+    }
+  };
+
+  private onConnectButton() {
+    const active = this.activeServer;
+    if (active) {
+      if (active.connectionState !== ServerConnectionState.DISCONNECTING) {
+        this.fireServerEvent('DisconnectPressed', active.id);
+      }
+      return;
+    }
+    const target = this.targetServer;
+    if (target && !target.errorMessageId) {
+      this.fireServerEvent('ConnectPressed', target.id);
+    }
+  }
+
+  private fireServerEvent(type: string, serverId: string) {
+    this.dispatchEvent(
+      new CustomEvent(type, {
+        detail: {serverId},
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  private renderConnectBar() {
+    const target = this.targetServer;
+    if (!target) return '';
+    const state = target.connectionState;
+    let label: string;
+    switch (state) {
+      case ServerConnectionState.CONNECTING:
+      case ServerConnectionState.DISCONNECTING:
+      case ServerConnectionState.RECONNECTING:
+        label = this.localize(`${state}-server-state`);
+        break;
+      case ServerConnectionState.CONNECTED:
+        label = this.localize('disconnect-button-label');
+        break;
+      default:
+        label = this.localize('connect-button-label');
+    }
+    return html`
+      <div class="connect-bar">
+        <connect-button
+          connection-state=${state}
+          server-id=${target.id}
+          label=${label}
+          ?disabled=${!this.activeServer && Boolean(target.errorMessageId)}
+          @click=${this.onConnectButton}
+        ></connect-button>
+      </div>
+    `;
+  }
 
   @property({type: Object}) localize: Localizer = msg => msg;
   @property({type: Boolean}) shouldShowAccessKeyWikiLink = false;
@@ -188,8 +312,28 @@ export class ServerList extends LitElement {
           ?darkMode=${this.darkMode}
           .servers=${this.servers}
           .localize=${this.localize}
+          .selectedId=${this.targetServer?.id ?? ''}
         ></server-list>
+        ${this.renderConnectBar()}
       `;
     }
+  }
+}
+
+const CHOSEN_SERVER_KEY = 'proclient.chosenServer';
+
+function readChosenServer(): string {
+  try {
+    return localStorage.getItem(CHOSEN_SERVER_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeChosenServer(serverId: string) {
+  try {
+    localStorage.setItem(CHOSEN_SERVER_KEY, serverId);
+  } catch {
+    // ignore
   }
 }

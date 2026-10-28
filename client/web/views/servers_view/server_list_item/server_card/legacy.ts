@@ -367,6 +367,8 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
   @property({type: Boolean}) darkMode = false;
   @property({type: Object}) server: ServerListItem;
   @property({type: Object}) localize: Localizer;
+  /** Fork: the server the bottom connect button acts on. */
+  @property({type: Boolean, reflect: true}) selected = false;
 
   @state() isRenameDialogOpen = false;
 
@@ -387,26 +389,65 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
             var(--outline-slim-gutter)
         );
 
-        /* Fork: name/address/status | square power button | menu */
+        /* Fork: radio | name/address/status | menu; tap selects the server */
+        border: 2px solid transparent;
         box-sizing: border-box;
-        gap: 0 8px;
-        grid-gap: 0 8px;
-        grid-template-columns: 1fr auto auto;
+        cursor: pointer;
+        gap: 0 12px;
+        grid-gap: 0 12px;
+        grid-template-columns: auto 1fr auto;
         grid-template-rows: auto auto;
         grid-template-areas:
-          'metadata button menu'
+          'radio metadata menu'
           'footer footer footer';
-        padding: 12px 4px 12px 16px;
+        padding: 10px 4px 10px 14px;
+        transition:
+          border-color 0.25s ease,
+          background 0.25s ease;
+      }
+
+      :host([selected]) .card {
+        background: linear-gradient(
+            rgba(var(--outline-primary-rgb), 0.07),
+            rgba(var(--outline-primary-rgb), 0.07)
+          ),
+          var(--outline-card-background);
+        border-color: var(--outline-primary);
+      }
+
+      .card-radio {
+        align-self: center;
+        border: 2px solid var(--outline-label-color);
+        border-radius: 50%;
+        box-sizing: border-box;
+        display: grid;
+        grid-area: radio;
+        height: 22px;
+        place-items: center;
+        transition: border-color 0.25s ease;
+        width: 22px;
+      }
+
+      .card-radio::after {
+        background: var(--outline-primary);
+        border-radius: 50%;
+        content: '';
+        height: 10px;
+        transform: scale(0);
+        transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1);
+        width: 10px;
+      }
+
+      :host([selected]) .card-radio {
+        border-color: var(--outline-primary);
+      }
+
+      :host([selected]) .card-radio::after {
+        transform: scale(1);
       }
 
       .card-footer {
-        margin: 8px -4px -12px -16px;
-      }
-
-      .card-row-button {
-        grid-area: button;
-        display: flex;
-        align-items: center;
+        margin: 8px -4px -10px -14px;
       }
 
       .card-menu-button {
@@ -420,15 +461,35 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
     const {elements} = getSharedComponents(this);
 
     return html`
-      <div class="card">
+      <div
+        class="card"
+        role="radio"
+        aria-checked=${this.selected ? 'true' : 'false'}
+        tabindex="0"
+        @click=${this.select}
+        @keydown=${(e: KeyboardEvent) =>
+          (e.key === 'Enter' || e.key === ' ') && this.select(e)}
+      >
+        <span class="card-radio"></span>
         <div class="card-metadata" aria-labelledby="server-name">
           <div>${elements.metadataText} ${elements.status}</div>
         </div>
-        <div class="card-row-button">${elements.powerButton('small')}</div>
         ${elements.menuButton} ${elements.errorFooter}
       </div>
       ${elements.menu} ${elements.renameDialog}
     `;
+  }
+
+  private select(event: Event) {
+    // The menu button lives inside the card: don't treat it as a selection.
+    if (event.composedPath().some(el => el === this.menuButton.value)) return;
+    this.dispatchEvent(
+      new CustomEvent('ProclientSelectServer', {
+        detail: {serverId: this.server.id},
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 }
 

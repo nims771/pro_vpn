@@ -53,6 +53,15 @@ export class AutoConnectDialog extends LitElement {
       justify-content: center;
       text-transform: uppercase;
     }
+
+    /* Fork: the dialog sits on the brand color, so the button is white. */
+    fieldset md-text-button {
+      --md-text-button-label-text-color: var(--outline-white);
+      --md-text-button-hover-label-text-color: var(--outline-white);
+      --md-text-button-focus-label-text-color: var(--outline-white);
+      --md-text-button-pressed-label-text-color: var(--outline-white);
+      font-weight: 600;
+    }
   `;
 
   render() {

@@ -480,3 +480,242 @@ export class PowerButton extends LitElement {
     `;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fork: the single wide connect button pinned to the bottom of the screen.
+
+@customElement('connect-button')
+export class ConnectButton extends LitElement {
+  @property({attribute: 'connection-state', reflect: true})
+  connectionState: ServerConnectionState = ServerConnectionState.DISCONNECTED;
+  @property({type: Boolean, reflect: true}) disabled = false;
+  @property() label = '';
+  /** Server id, for the connected-time counter shown inside the button. */
+  @property({attribute: 'server-id'}) serverId = '';
+
+  @state() private justConnected = false;
+  private popTimer?: number;
+
+  static styles = css`
+    :host {
+      --accent: var(--outline-primary);
+      --accent-dark: var(--outline-primary-dark, var(--outline-primary));
+      --radius: 16px;
+
+      display: block;
+      position: relative;
+      width: 100%;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button {
+      all: unset;
+      align-items: center;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      border: 2px solid transparent;
+      border-radius: var(--radius);
+      box-shadow: 0 6px 18px rgba(var(--outline-primary-rgb), 0.35);
+      box-sizing: border-box;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      font-family: var(--outline-font-family);
+      font-size: 1.05rem;
+      font-weight: 600;
+      gap: 12px;
+      height: 58px;
+      justify-content: center;
+      letter-spacing: 0.01em;
+      overflow: hidden;
+      padding: 0 20px;
+      position: relative;
+      transition:
+        transform 0.15s ease,
+        background 0.35s ease,
+        color 0.35s ease,
+        border-color 0.35s ease,
+        box-shadow 0.35s ease;
+      width: 100%;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button:focus-visible {
+      outline: 3px solid rgba(var(--outline-primary-rgb), 0.5);
+      outline-offset: 3px;
+    }
+
+    :host([disabled]) button {
+      cursor: default;
+      filter: grayscale(0.6);
+      opacity: 0.5;
+    }
+
+    svg {
+      flex: none;
+      height: 24px;
+      width: 24px;
+    }
+
+    .label {
+      white-space: nowrap;
+    }
+
+    connection-timer {
+      font-size: 0.95rem;
+      font-weight: 500;
+      margin-left: auto;
+      opacity: 0.9;
+    }
+
+    /* Moving shine while connecting. */
+    .shine {
+      background: linear-gradient(
+        100deg,
+        transparent 20%,
+        rgba(255, 255, 255, 0.45) 50%,
+        transparent 80%
+      );
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      transform: translateX(-100%);
+    }
+
+    :host([connection-state='connecting']) .shine,
+    :host([connection-state='reconnecting']) .shine {
+      animation: shine 1.3s ease-in-out infinite;
+      opacity: 1;
+    }
+
+    :host([connection-state='connecting']) button,
+    :host([connection-state='reconnecting']) button {
+      background: linear-gradient(
+        135deg,
+        rgba(var(--outline-primary-rgb), 0.75),
+        var(--accent)
+      );
+    }
+
+    :host([connection-state='connecting']) svg,
+    :host([connection-state='reconnecting']) svg {
+      animation: breathe 1.1s ease-in-out infinite;
+    }
+
+    /* Connected: outlined, gently glowing, so "Disconnect" reads differently. */
+    :host([connection-state='connected']) button {
+      animation: glow 3s ease-in-out infinite;
+      background: var(--outline-card-background);
+      border-color: var(--accent);
+      color: var(--accent);
+      justify-content: flex-start;
+    }
+
+    :host([connection-state='connected']) button.pop {
+      animation:
+        pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1),
+        glow 3s ease-in-out infinite;
+    }
+
+    :host([connection-state='disconnecting']) button {
+      opacity: 0.7;
+    }
+
+    @keyframes shine {
+      to {
+        transform: translateX(100%);
+      }
+    }
+
+    @keyframes breathe {
+      50% {
+        opacity: 0.5;
+        transform: scale(0.88);
+      }
+    }
+
+    @keyframes glow {
+      0%,
+      100% {
+        box-shadow: 0 4px 14px rgba(var(--outline-primary-rgb), 0.18);
+      }
+      50% {
+        box-shadow:
+          0 0 0 5px rgba(var(--outline-primary-rgb), 0.14),
+          0 6px 22px rgba(var(--outline-primary-rgb), 0.35);
+      }
+    }
+
+    @keyframes pop {
+      0% {
+        transform: scale(0.95);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .shine,
+      svg,
+      button {
+        animation: none !important;
+      }
+    }
+  `;
+
+  willUpdate(changed: PropertyValues<this>) {
+    const previous = changed.get('connectionState');
+    if (
+      changed.has('connectionState') &&
+      this.connectionState === ServerConnectionState.CONNECTED &&
+      (previous === ServerConnectionState.CONNECTING ||
+        previous === ServerConnectionState.RECONNECTING)
+    ) {
+      this.justConnected = true;
+      window.clearTimeout(this.popTimer);
+      this.popTimer = window.setTimeout(() => {
+        this.justConnected = false;
+      }, 600);
+    }
+  }
+
+  render() {
+    const up =
+      this.connectionState === ServerConnectionState.CONNECTED ||
+      this.connectionState === ServerConnectionState.RECONNECTING;
+    return html`
+      <button
+        class=${this.justConnected ? 'pop' : ''}
+        ?disabled=${this.disabled}
+        aria-label=${this.label}
+      >
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M12 3v8"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+          />
+          <path
+            d="M7.05 6.4a7.5 7.5 0 1 0 9.9 0"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+          />
+        </svg>
+        <span class="label">${this.label}</span>
+        ${up
+          ? html`<connection-timer
+              server-id=${this.serverId}
+              connection-state=${this.connectionState}
+            ></connection-timer>`
+          : ''}
+        <span class="shine"></span>
+      </button>
+    `;
+  }
+}
