@@ -25,6 +25,7 @@ import {unsafeHTML, UnsafeHTMLDirective} from 'lit/directives/unsafe-html.js';
 import {ServerConnectionState as _ServerConnectionState} from './server_connection_indicator';
 import './server_connection_indicator';
 import './server_list';
+import './proclient_panel';
 import {ServerListItem as _ServerListItem} from './server_list_item';
 
 export type ServerListItem = _ServerListItem;
@@ -179,6 +180,10 @@ export class ServerList extends LitElement {
       `;
     } else {
       return html`
+        <proclient-panel
+          .servers=${this.servers}
+          .localize=${this.localize}
+        ></proclient-panel>
         <server-list
           ?darkMode=${this.darkMode}
           .servers=${this.servers}

@@ -28,6 +28,8 @@ export interface CapacitorPluginOutline {
   }): Promise<void>;
   stop(options: {tunnelId: string}): Promise<void>;
   isRunning(options: {tunnelId: string}): Promise<{isRunning: boolean}>;
+  /** Fork: bytes relayed through the tunnel since the VPN process started. */
+  getTrafficStats(): Promise<{rxBytes: number; txBytes: number}>;
   initializeErrorReporting(options: {apiKey: string}): Promise<void>;
   reportEvents(options: {uuid: string}): Promise<void>;
   /**

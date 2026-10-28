@@ -57,8 +57,9 @@ func GoRelayTraffic(fd int, rd *RemoteDevice) *perrs.PlatformError {
 	rd.tun = tun
 	rd.mu.Unlock()
 
-	go vpn.RelayTraffic(rd.rd.ReadWriteCloser, tun)
-	go vpn.RelayTraffic(tun, rd.rd.ReadWriteCloser)
+	// Fork: count bytes in both directions for the traffic display.
+	go vpn.RelayTraffic(rd.rd.ReadWriteCloser, &countingReader{r: tun, n: &uploadBytes})
+	go vpn.RelayTraffic(&countingWriteCloser{w: tun, n: &downloadBytes}, rd.rd.ReadWriteCloser)
 
 	return nil
 }

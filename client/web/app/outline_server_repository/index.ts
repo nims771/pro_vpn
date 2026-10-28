@@ -68,9 +68,20 @@ interface OutlineServerJson {
   readonly id: string;
   readonly accessKey: string;
   readonly name: string;
+  // Fork: set for servers that came from a panel subscription.
+  readonly subscriptionId?: string;
 }
 
-type ServerEntry = {accessKey: string; server: Server};
+type ServerEntry = {accessKey: string; server: Server; subscriptionId?: string};
+
+/** Fork: result of syncing a subscription's servers into the repository. */
+export interface SubscriptionSyncResult {
+  added: number;
+  removed: number;
+  /** Keys the app couldn't use (unsupported cipher, plugin, bad format). */
+  failed: number;
+  total: number;
+}
 
 export async function newOutlineServerRepository(
   vpnApi: VpnApi,
@@ -216,11 +227,16 @@ class OutlineServerRepository implements ServerRepository {
 
   private storeServers() {
     const servers: ServersStorageV1 = [];
-    for (const {accessKey, server} of this.serverById.values()) {
+    for (const {
+      accessKey,
+      server,
+      subscriptionId,
+    } of this.serverById.values()) {
       servers.push({
         id: server.id,
         accessKey,
         name: server.name,
+        ...(subscriptionId ? {subscriptionId} : {}),
       });
     }
     const json = JSON.stringify(servers);
@@ -230,7 +246,8 @@ class OutlineServerRepository implements ServerRepository {
   async internalCreateServer(
     id: string,
     accessKey: string,
-    name?: string
+    name?: string,
+    subscriptionId?: string
   ): Promise<Server> {
     const server = await newOutlineServer(
       this.vpnApi,
@@ -239,8 +256,104 @@ class OutlineServerRepository implements ServerRepository {
       accessKey,
       this.localize
     );
-    this.serverById.set(id, {accessKey, server});
+    this.serverById.set(id, {accessKey, server, subscriptionId});
     return server;
+  }
+
+  // ---- Fork: panel subscriptions ----
+
+  getSubscriptionId(serverId: string): string | undefined {
+    return this.serverById.get(serverId)?.subscriptionId;
+  }
+
+  /**
+   * Makes the servers of `subscriptionId` match `entries`: adds new keys,
+   * renames existing ones and removes keys the panel no longer lists (except a
+   * server that is connected right now, which is kept until disconnected).
+   */
+  async syncSubscription(
+    subscriptionId: string,
+    entries: Array<{accessKey: string; name: string}>
+  ): Promise<SubscriptionSyncResult> {
+    const result: SubscriptionSyncResult = {
+      added: 0,
+      removed: 0,
+      failed: 0,
+      total: 0,
+    };
+    const existing = new Map<string, ServerEntry>();
+    for (const entry of this.serverById.values()) {
+      if (entry.subscriptionId === subscriptionId) {
+        existing.set(entry.accessKey.trim(), entry);
+      }
+    }
+
+    const wanted = new Set<string>();
+    for (const {accessKey, name} of entries) {
+      const key = accessKey.trim();
+      wanted.add(key);
+      const current = existing.get(key);
+      if (current) {
+        if (name && current.server.name !== name) current.server.name = name;
+        result.total++;
+        continue;
+      }
+      if (this.serverFromAccessKey(key)) {
+        // Already added by hand: leave it as it is.
+        result.total++;
+        continue;
+      }
+      try {
+        await this.internalCreateServer(uuidv4(), key, name, subscriptionId);
+        result.added++;
+        result.total++;
+      } catch (e) {
+        console.warn(`subscription key skipped: ${e}`);
+        result.failed++;
+      }
+    }
+
+    for (const [key, entry] of existing) {
+      if (wanted.has(key)) continue;
+      let running = false;
+      try {
+        running = await entry.server.checkRunning();
+      } catch {
+        // Assume not running.
+      }
+      if (running) {
+        result.total++;
+        continue;
+      }
+      this.serverById.delete(entry.server.id);
+      result.removed++;
+      void this.eraseServiceStorage(entry.server.id);
+    }
+
+    this.storeServers();
+    return result;
+  }
+
+  /** Removes every server of a subscription that is not connected right now. */
+  async forgetSubscription(subscriptionId: string): Promise<void> {
+    await this.syncSubscription(subscriptionId, []);
+    // Detach whatever had to stay (connected) so it becomes a normal server.
+    for (const entry of this.serverById.values()) {
+      if (entry.subscriptionId === subscriptionId) {
+        entry.subscriptionId = undefined;
+      }
+    }
+    this.storeServers();
+  }
+
+  private async eraseServiceStorage(serverId: string) {
+    try {
+      await methodChannel
+        .getDefaultMethodChannel()
+        .invokeMethod('EraseServiceStorage', serverId);
+    } catch (e) {
+      console.warn(`failed to erase storage of ${serverId}: ${e}`);
+    }
   }
 }
 
@@ -299,7 +412,8 @@ async function loadServersV1(storage: Storage, repo: OutlineServerRepository) {
       await repo.internalCreateServer(
         serverJson.id,
         serverJson.accessKey,
-        serverJson.name
+        serverJson.name,
+        serverJson.subscriptionId
       );
     } catch (e) {
       // Don't propagate so other stored servers can be created.

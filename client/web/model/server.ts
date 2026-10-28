@@ -53,4 +53,12 @@ export interface ServerRepository {
   undoForget(serverId: string): void;
   getAll(): Server[];
   getById(serverId: string): Server | undefined;
+
+  // Fork: panel subscriptions. Optional so test doubles needn't implement them.
+  getSubscriptionId?(serverId: string): string | undefined;
+  syncSubscription?(
+    subscriptionId: string,
+    entries: Array<{accessKey: string; name: string}>
+  ): Promise<{added: number; removed: number; failed: number; total: number}>;
+  forgetSubscription?(subscriptionId: string): Promise<void>;
 }

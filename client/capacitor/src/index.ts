@@ -28,6 +28,7 @@ import type {
   TunnelStatus,
 } from '@web/app/outline_server_repository/vpn';
 import type {OutlinePlatform} from '@web/app/platform';
+import {proclientStore} from '@web/app/subscriptions/store';
 import {AbstractUpdater} from '@web/app/updater';
 import {UrlInterceptor} from '@web/app/url_interceptor';
 import {NoOpVpnInstaller, type VpnInstaller} from '@web/app/vpn_installer';
@@ -238,6 +239,22 @@ installDefaultMethodChannel(
     : new CapacitorBrowserMethodChannel()
 );
 wireExternalLinkHandling();
+
+// Fork: live traffic counters come from the Android VPN service.
+if (hasDeviceSupport && Capacitor.getPlatform() === 'android') {
+  proclientStore.setTrafficSource(() =>
+    CapacitorPluginOutline.getTrafficStats()
+  );
+} else if (!hasDeviceSupport && location.search.includes('demoTraffic')) {
+  // Browser preview only (?demoTraffic): simulated counters to design the panel.
+  let rx = 300 * 1024 * 1024;
+  let tx = 20 * 1024 * 1024;
+  proclientStore.setTrafficSource(async () => {
+    rx += 900 * 1024 + Math.random() * 600 * 1024;
+    tx += 60 * 1024 + Math.random() * 40 * 1024;
+    return {rxBytes: rx, txBytes: tx};
+  });
+}
 
 // The migration has to finish first: main() builds the server repository from
 // localStorage, so replaying the Cordova data afterwards would leave the user

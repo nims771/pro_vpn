@@ -19,6 +19,7 @@ import {Clipboard} from './clipboard';
 import {EnvironmentVariables} from './environment';
 import * as config from './outline_server_repository/config';
 import {Settings, SettingsKey, Appearance} from './settings';
+import {SubscriptionManager} from './subscriptions/manager';
 import {Updater} from './updater';
 import {UrlInterceptor} from './url_interceptor';
 import {VpnInstaller} from './vpn_installer';
@@ -85,6 +86,8 @@ export class App {
   private localize: Localizer;
   private ignoredAccessKeys: {[accessKey: string]: boolean} = {};
   private serverConnectionChangeTimeouts: {[serverId: string]: boolean} = {};
+  // Fork: panel subscriptions (lists of servers + traffic quota).
+  private subscriptions: SubscriptionManager;
 
   // Feature flag to control whether dark mode is enabled
   // When set to true, the theme option will appear in the navigation menu
@@ -110,6 +113,9 @@ export class App {
     this.localize = this.rootEl.localize.bind(this.rootEl);
 
     this.syncServersToUI();
+    this.subscriptions = new SubscriptionManager(serverRepo, () =>
+      this.syncServersToUI()
+    );
     rootEl.appVersion = environmentVars.APP_VERSION;
     rootEl.appBuild = environmentVars.APP_BUILD_NUMBER;
     rootEl.errorReporter = this.errorReporter;
@@ -128,6 +134,25 @@ export class App {
     document.addEventListener(
       'resume',
       this.syncConnectivityStateToServerCards.bind(this)
+    );
+    // Fork: keep subscriptions fresh (on start and when the app comes back).
+    window.setTimeout(() => {
+      void this.subscriptions.refreshAll();
+    }, 1500);
+    document.addEventListener('resume', () => {
+      void this.subscriptions.refreshAll();
+    });
+    this.rootEl.addEventListener(
+      'ProclientRefreshSubscription',
+      (event: CustomEvent) => {
+        void this.refreshSubscription(event.detail?.id);
+      }
+    );
+    this.rootEl.addEventListener(
+      'ProclientDeleteSubscription',
+      (event: CustomEvent) => {
+        void this.deleteSubscription(event.detail?.id);
+      }
     );
 
     // Register handlers for events fired by Polymer components.
@@ -453,9 +478,18 @@ export class App {
     this.rootEl.$.addServerView.open = false;
   }
 
-  private requestAddServer(event: CustomEvent) {
+  private async requestAddServer(event: CustomEvent) {
+    const accessKey: string = event.detail.accessKey;
+    // Fork: an https:// link may be a panel subscription with many servers.
+    if (
+      SubscriptionManager.isCandidateUrl(accessKey) &&
+      (await this.addSubscription(accessKey))
+    ) {
+      this.rootEl.$.addServerView.open = false;
+      return;
+    }
     this.serverRepo
-      .add(event.detail.accessKey)
+      .add(accessKey)
       .catch(err => {
         this.changeToDefaultPage();
         this.showLocalizedError(err);
@@ -463,6 +497,64 @@ export class App {
       .finally(() => {
         this.rootEl.$.addServerView.open = false;
       });
+  }
+
+  // ---- Fork: subscriptions ----
+
+  /** Returns false if the link turned out not to be a subscription. */
+  private async addSubscription(url: string): Promise<boolean> {
+    this.rootEl.showToast(this.localize('proclient-subscription-loading'));
+    const outcome = await this.subscriptions.tryAdd(url);
+    if (!outcome) return false;
+    this.changeToDefaultPage();
+    if (!outcome.subscription.serverCount) {
+      await this.subscriptions.remove(outcome.subscription.id);
+      this.rootEl.showToast(
+        this.localize('proclient-subscription-empty'),
+        6000
+      );
+      return true;
+    }
+    this.rootEl.showToast(
+      this.localize(
+        'proclient-subscription-added',
+        'count',
+        String(outcome.subscription.serverCount)
+      )
+    );
+    return true;
+  }
+
+  private async refreshSubscription(id?: string) {
+    try {
+      if (id) {
+        const outcome = await this.subscriptions.refresh(id);
+        this.rootEl.showToast(
+          this.localize(
+            'proclient-subscription-updated',
+            'count',
+            String(outcome.subscription.serverCount ?? 0)
+          )
+        );
+      } else {
+        await this.subscriptions.refreshAll(true);
+      }
+    } catch (e) {
+      console.warn(`subscription refresh failed: ${e}`);
+      this.rootEl.showToast(this.localize('proclient-subscription-error'));
+    }
+  }
+
+  private async deleteSubscription(id?: string) {
+    if (!id) return;
+    if (
+      !(await this.showConfirmationDialog(
+        this.localize('proclient-subscription-delete-confirm')
+      ))
+    ) {
+      return;
+    }
+    await this.subscriptions.remove(id);
   }
 
   private async requestAddServerConfirmation(event: CustomEvent) {

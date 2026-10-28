@@ -32,6 +32,21 @@ export class CapacitorBrowserMethodChannel implements MethodChannel {
         }
         return (await res.text()).trim();
       }
+      case 'FetchSubscription': {
+        // Fork: same contract as Go fetchSubscription (CORS permitting).
+        const res = await fetch(params, {credentials: 'omit'});
+        if (!res.ok) {
+          throw new Error(`FetchSubscription failed: HTTP ${res.status}`);
+        }
+        return JSON.stringify({
+          body: await res.text(),
+          userInfo: res.headers.get('Subscription-Userinfo') ?? '',
+          title: res.headers.get('Profile-Title') ?? '',
+          updateInterval: res.headers.get('Profile-Update-Interval') ?? '',
+          webPageUrl: res.headers.get('Profile-Web-Page-Url') ?? '',
+          supportUrl: res.headers.get('Support-Url') ?? '',
+        });
+      }
       case 'EraseServiceStorage':
         return '';
       default:

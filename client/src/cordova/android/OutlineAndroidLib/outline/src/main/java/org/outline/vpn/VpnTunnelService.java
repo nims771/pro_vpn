@@ -148,6 +148,11 @@ public class VpnTunnelService extends VpnService {
     public void initErrorReporting(String apiKey) {
       VpnTunnelService.this.initErrorReporting(apiKey);
     }
+
+    @Override
+    public long[] getTrafficStats() {
+      return new long[] {Tun2socks.totalDownloadBytes(), Tun2socks.totalUploadBytes()};
+    }
   };
 
   @Override

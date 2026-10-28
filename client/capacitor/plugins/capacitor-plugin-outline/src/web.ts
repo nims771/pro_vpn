@@ -46,6 +46,10 @@ export class CapacitorPluginOutlineWeb
     throw this.unimplemented('Not implemented on web.');
   }
 
+  async getTrafficStats(): Promise<{rxBytes: number; txBytes: number}> {
+    throw this.unimplemented('Not implemented on web.');
+  }
+
   async initializeErrorReporting(_options: {apiKey: string}): Promise<void> {
     throw this.unimplemented('Not implemented on web.');
   }

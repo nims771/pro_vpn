@@ -240,6 +240,27 @@ class CapacitorPluginOutline : Plugin() {
     }
   }
 
+  // Fork: bytes relayed through the tunnel, for the speed / session traffic display.
+  @PluginMethod
+  fun getTrafficStats(call: PluginCall) {
+    executor.execute {
+      try {
+        val service = synchronized(stateLock) { vpnTunnelService }
+        if (service == null) {
+          sendErrorResult(call, vpnServiceUnavailableError())
+          return@execute
+        }
+        val stats = service.getTrafficStats()
+        call.resolve(JSObject().apply {
+          put("rxBytes", stats[0])
+          put("txBytes", stats[1])
+        })
+      } catch (e: Exception) {
+        sendErrorResult(call, platformErrorFromException(e))
+      }
+    }
+  }
+
   @PluginMethod
   fun initializeErrorReporting(call: PluginCall) {
     executor.execute {

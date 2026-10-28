@@ -60,4 +60,11 @@ interface IVpnTunnelService {
    * @param apiKey Sentry API key.
    */
   void initErrorReporting(String apiKey);
+
+  /**
+   * Fork: bytes relayed through the tunnel since the VPN process started.
+   *
+   * @return {downloadBytes, uploadBytes}.
+   */
+  long[] getTrafficStats();
 }

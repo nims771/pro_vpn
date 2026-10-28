@@ -388,17 +388,19 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
         );
 
         /* Fork: name/address/status | square power button | menu */
-        grid-template-columns: 0 1fr auto auto 0;
-        grid-template-rows: 0 minmax(0, 1fr) 0 auto;
+        box-sizing: border-box;
+        gap: 0 8px;
+        grid-gap: 0 8px;
+        grid-template-columns: 1fr auto auto;
+        grid-template-rows: auto auto;
         grid-template-areas:
-          '. . . . .'
-          '. metadata button menu .'
-          '. . . . .'
-          'footer footer footer footer footer';
+          'metadata button menu'
+          'footer footer footer';
+        padding: 12px 4px 12px 16px;
       }
 
-      .card-metadata {
-        padding: var(--outline-slim-gutter) 0;
+      .card-footer {
+        margin: 8px -4px -12px -16px;
       }
 
       .card-row-button {

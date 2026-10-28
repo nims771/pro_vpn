@@ -49,6 +49,11 @@ const (
 	//  - Output: the content in raw string of the fetched resource
 	MethodFetchResource = "FetchResource"
 
+	// FetchSubscription downloads a VPN subscription (list of access keys) from a panel.
+	//  - Input: the subscription URL
+	//  - Output: JSON {body, userInfo, title, updateInterval, webPageUrl, supportUrl}
+	MethodFetchSubscription = "FetchSubscription"
+
 	// Parses the TunnelConfig and extracts the first hop or provider error as needed.
 	//  - Input: the tunnel config text
 	//  - Output: the TunnelConfigJson that Typescript needs
@@ -97,6 +102,13 @@ func InvokeMethod(method string, input string) *InvokeMethodResult {
 	case MethodFetchResource:
 		url := input
 		content, err := fetchResource(url)
+		return &InvokeMethodResult{
+			Value: content,
+			Error: platerrors.ToPlatformError(err),
+		}
+
+	case MethodFetchSubscription:
+		content, err := fetchSubscription(input)
 		return &InvokeMethodResult{
 			Value: content,
 			Error: platerrors.ToPlatformError(err),
