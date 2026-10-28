@@ -70,11 +70,6 @@ jobs:
       - name: Normalize version
         run: echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
 
-      # Same debug signing key on every build: updates install over the previous
-      # version, and the device HWID (ANDROID_ID) stays the same.
-      - name: Use the project's debug signing key
-        run: mkdir -p ~/.android && cp branding/debug.keystore ~/.android/debug.keystore
-
       - name: Build debug APK
         if: env.ANDROID_KEY_STORE_CONTENTS == ''
         run: npm run action client/capacitor/build android
