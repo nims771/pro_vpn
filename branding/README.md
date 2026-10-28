@@ -1,4 +1,4 @@
-# ProClient — свой VPN-клиент на основе Outline
+# ProVPN — свой VPN-клиент на основе Outline
 
 Это форк официального клиента [Outline](https://github.com/Jigsaw-Code/outline-apps) (лицензия Apache 2.0).
 Приложение работает так же, как Outline: вставляете ключ `ss://…` (или `ssconf://…`) от своего сервера Outline и нажимаете «Подключить». Весь трафик телефона идёт через сервер.

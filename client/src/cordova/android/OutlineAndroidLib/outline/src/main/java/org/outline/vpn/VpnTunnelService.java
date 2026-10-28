@@ -69,7 +69,7 @@ import tun2socks.Tun2socks;
 public class VpnTunnelService extends VpnService {
   private static final Logger LOG = Logger.getLogger(VpnTunnelService.class.getName());
   private static final int NOTIFICATION_SERVICE_ID = 1;
-  private static final int NOTIFICATION_COLOR = 0x00BFA5;
+  private static final int NOTIFICATION_COLOR = 0x16A34A;
   private static final String NOTIFICATION_CHANNEL_ID = "outline-vpn";
   private static final String TUNNEL_ID_KEY = "id";
   private static final String TUNNEL_CONFIG_KEY = "config";
@@ -782,7 +782,7 @@ public class VpnTunnelService extends VpnService {
     Notification.Builder builder;
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       NotificationChannel channel = new NotificationChannel(
-          NOTIFICATION_CHANNEL_ID, "Outline", NotificationManager.IMPORTANCE_LOW);
+          NOTIFICATION_CHANNEL_ID, "ProVPN", NotificationManager.IMPORTANCE_LOW);
       NotificationManager notificationManager = getSystemService(NotificationManager.class);
       notificationManager.createNotificationChannel(channel);
       builder = new Notification.Builder(this, NOTIFICATION_CHANNEL_ID);

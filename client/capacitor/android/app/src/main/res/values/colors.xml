@@ -16,7 +16,7 @@
 -->
 
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <color tools:ignore="UnusedResources" name="colorPrimary">#3F51B5</color>
-    <color tools:ignore="UnusedResources" name="colorPrimaryDark">#303F9F</color>
-    <color tools:ignore="UnusedResources" name="colorAccent">#FF4081</color>
+    <color tools:ignore="UnusedResources" name="colorPrimary">#166534</color>
+    <color tools:ignore="UnusedResources" name="colorPrimaryDark">#166534</color>
+    <color tools:ignore="UnusedResources" name="colorAccent">#16A34A</color>
 </resources>

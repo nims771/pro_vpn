@@ -1,4 +1,4 @@
-> **Форк Outline Client → ProClient.** Как настроить и собрать для Android и iOS: [branding/README.md](branding/README.md)
+> **Форк Outline Client → ProVPN.** Как настроить и собрать для Android и iOS: [branding/README.md](branding/README.md)
 
 # <img alt="Outline Manager Logo" src="docs/resources/logo_manager.png" title="Outline Manager" width="32">&nbsp;&nbsp;Outline Apps&nbsp;&nbsp;<img alt="Outline Client Logo" src="docs/resources/logo_client.png" title="Outline Client" width="32">
 

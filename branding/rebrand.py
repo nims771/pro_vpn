@@ -38,8 +38,25 @@ UPSTREAM = {
 URL_KEYS = ("supportUrl", "getKeyUrl")
 STATE_KEYS = ("name", "androidId", "iosId", "appGroup") + URL_KEYS
 
-# Тексты, где «Outline» — это сам проект Outline (атрибуция, Outline Manager).
+# Эти тексты в Outline рассказывали о самом Outline: скрипт пишет их заново
+# из шаблонов ниже ({name} — название приложения), а не заменой слова.
 PROTECTED_MESSAGE_KEYS = {"about-outline", "server-create-your-own-zero-state"}
+MESSAGE_TEMPLATES = {
+    "about-outline": {
+        "ru": "{name} — приложение для защищённого подключения к интернету через ваш VPN-сервер. "
+              "Работает по протоколу <a href={{shadowsocksUrl}}>Shadowsocks</a>.<br><br>"
+              "Создано на основе открытого исходного кода "
+              "(<a href={{gitHubUrl}}>лицензия Apache 2.0</a>).",
+        "en": "{name} is an app for a secure connection to the internet through your own VPN server. "
+              "It uses the <a href={{shadowsocksUrl}}>Shadowsocks</a> protocol.<br><br>"
+              "Built on open-source software "
+              "(<a href={{gitHubUrl}}>Apache License 2.0</a>).",
+    },
+    "server-create-your-own-zero-state": {
+        "ru": "Нет сервера?<br>Добавьте ключ доступа или ссылку подписки, которую вам дали.",
+        "en": "No server?<br>Add the access key or subscription link you were given.",
+    },
+}
 
 ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 IOS_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9\-]*(\.[A-Za-z][A-Za-z0-9\-]*)+$")
@@ -69,6 +86,8 @@ def load_config() -> dict:
     for key in ("primaryColor", "backgroundColor"):
         if not HEX_RE.match(cfg.get(key, "")):
             fail(f"{key} должен быть цветом вида #RRGGBB")
+    if cfg.get("headerColor") and not HEX_RE.match(cfg["headerColor"]):
+        fail("headerColor должен быть цветом вида #RRGGBB")
     team = cfg.get("appleTeamId", "")
     if team and not TEAM_RE.match(team):
         fail("appleTeamId — это 10 символов из Apple Developer (Membership → Team ID)")
@@ -125,6 +144,15 @@ def palette(primary: str) -> dict:
     }
 
 
+def header_color(cfg: dict) -> str:
+    """Цвет верхней панели и меню: из brand.json или тёмный оттенок основного."""
+    if cfg.get("headerColor"):
+        return cfg["headerColor"].upper()
+    h, s, l = hex_to_hsl(cfg["primaryColor"])
+    r, g, b = hsl_to_rgb(h, min(s, 70), 20)
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
 def css_hsl(c) -> str:
     return f"hsl({c[0]:.0f}, {c[1]:.0f}%, {c[2]:.0f}%)"
 
@@ -148,9 +176,31 @@ def apply_android(cfg: dict) -> None:
         t, r'(applicationId\s+")[^"]+(")', rf'\g<1>{cfg["androidId"]}\g<2>', gradle))
 
     strings = CAP / "android" / "app" / "src" / "main" / "res" / "values" / "strings.xml"
-    edit(strings, lambda t: sub_required(
-        t, r'(<string name="app_name">).*?(</string>)',
-        lambda m: m.group(1) + xml_escape(cfg["name"]) + m.group(2), strings))
+    for key in ("app_name", "title_activity_main"):
+        edit(strings, lambda t, key=key: sub_required(
+            t, rf'(<string name="{key}">).*?(</string>)',
+            lambda m: m.group(1) + xml_escape(cfg["name"]) + m.group(2), strings))
+
+    pal = palette(cfg["primaryColor"])
+    colors = CAP / "android" / "app" / "src" / "main" / "res" / "values" / "colors.xml"
+    android_colors = {
+        "colorPrimary": header_color(cfg),
+        "colorPrimaryDark": header_color(cfg),
+        "colorAccent": cfg["primaryColor"].upper(),
+    }
+    for key, value in android_colors.items():
+        edit(colors, lambda t, key=key, value=value: sub_required(
+            t, rf'(name="{key}">)#[0-9A-Fa-f]{{6}}(</color>)', rf"\g<1>{value}\g<2>", colors))
+
+    service = (ROOT / "client" / "src" / "cordova" / "android" / "OutlineAndroidLib" / "outline"
+               / "src" / "main" / "java" / "org" / "outline" / "vpn" / "VpnTunnelService.java")
+    rgb = hsl_to_rgb(*pal["primary"])
+    java_name = cfg["name"].replace("\\", "\\\\").replace('"', '\\"')
+    edit(service, lambda t: sub_required(
+        t, r'(NOTIFICATION_CHANNEL_ID, )"[^"]*"', lambda m: m.group(1) + f'"{java_name}"', service))
+    edit(service, lambda t: sub_required(
+        t, r"(NOTIFICATION_COLOR = )0x[0-9A-Fa-f]{6};",
+        rf"\g<1>0x{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X};", service))
 
 
 def apply_ios(cfg: dict, prev: dict) -> None:
@@ -207,6 +257,8 @@ def apply_web(cfg: dict, prev: dict) -> None:
                          ("primary-medium", "medium"), ("primary-light", "light")):
             t = sub_required(t, rf"(--outline-{var}:\s*)[^;]+;", rf"\g<1>{css_hsl(pal[key])};", style)
         t = sub_required(t, r"(--outline-primary-rgb:\s*)[^;]+;", rf"\g<1>{rgb[0]}, {rgb[1]}, {rgb[2]};", style)
+        # Верхняя панель и боковое меню.
+        t = sub_required(t, r"(--outline-dark-primary:\s*)[^;]+;", rf"\g<1>{header_color(cfg)};", style)
         return t
 
     edit(style, fix_css)
@@ -242,12 +294,22 @@ def apply_web(cfg: dict, prev: dict) -> None:
             m = line_re.match(line)
             if m and m.group(2) not in PROTECTED_MESSAGE_KEYS:
                 value = word.sub(cfg["name"].replace("\\", "\\\\").replace('"', '\\"'), m.group(3))
+                # Склоняемые формы в других языках: «Outlineom» → «ProVPN-om».
+                value = re.sub(r"(?<![A-Za-z])Outline(?=[a-zäöå])",
+                               cfg["name"].replace("\\", "\\\\") + "-", value)
                 line = m.group(1) + value + m.group(4)
             out.append(line)
         return "".join(out)
 
     for f in sorted((WEB / "messages").glob("*.json")):
         edit(f, fix_messages)
+        lang = "ru" if f.stem == "ru" else "en"
+        for key, texts in MESSAGE_TEMPLATES.items():
+            value = texts[lang].format(name=cfg["name"])
+            encoded = json.dumps(value, ensure_ascii=False)
+            edit(f, lambda t, key=key, encoded=encoded: re.sub(
+                rf'^(\s*"{re.escape(key)}":\s*)".*"(,?)$',
+                lambda m: m.group(1) + encoded + m.group(2), t, flags=re.M))
 
 
 # ---------------------------------------------------------------- картинки

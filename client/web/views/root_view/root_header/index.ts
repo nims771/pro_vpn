@@ -61,7 +61,7 @@ export class RootHeader extends LitElement {
         : html`<md-icon-button @click=${this.openNavigation}>
             <md-icon>menu</md-icon>
           </md-icon-button>`}
-      <h1>${this.title || 'ProClient'}</h1>
+      <h1>${this.title || 'ProVPN'}</h1>
       <md-icon-button
         class=${classMap({hidden: !this.showAddButton})}
         @click=${this.openAddAccessKey}
