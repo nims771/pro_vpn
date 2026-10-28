@@ -50,6 +50,20 @@ export class CapacitorPluginOutlineWeb
     throw this.unimplemented('Not implemented on web.');
   }
 
+  async measureLatency(): Promise<{ms: number}> {
+    throw this.unimplemented('Not implemented on web.');
+  }
+
+  async getDeviceInfo(): Promise<{
+    deviceId: string;
+    manufacturer: string;
+    model: string;
+    os: string;
+    osVersion: string;
+  }> {
+    throw this.unimplemented('Not implemented on web.');
+  }
+
   async initializeErrorReporting(_options: {apiKey: string}): Promise<void> {
     throw this.unimplemented('Not implemented on web.');
   }

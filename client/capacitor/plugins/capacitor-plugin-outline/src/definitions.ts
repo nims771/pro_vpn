@@ -30,6 +30,16 @@ export interface CapacitorPluginOutline {
   isRunning(options: {tunnelId: string}): Promise<{isRunning: boolean}>;
   /** Fork: bytes relayed through the tunnel since the VPN process started. */
   getTrafficStats(): Promise<{rxBytes: number; txBytes: number}>;
+  /** Fork: time of an HTTP request through the server, -1 on failure. */
+  measureLatency(): Promise<{ms: number}>;
+  /** Fork: device identity for the HWID. */
+  getDeviceInfo(): Promise<{
+    deviceId: string;
+    manufacturer: string;
+    model: string;
+    os: string;
+    osVersion: string;
+  }>;
   initializeErrorReporting(options: {apiKey: string}): Promise<void>;
   reportEvents(options: {uuid: string}): Promise<void>;
   /**

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"localhost/client/go/outline/platerrors"
@@ -42,9 +43,28 @@ type fetchSubscriptionResponse struct {
 	SupportURL string `json:"supportUrl"`
 }
 
+// fetchSubscriptionRequest is the JSON input of FetchSubscription. A plain URL
+// string is accepted too.
+type fetchSubscriptionRequest struct {
+	URL string `json:"url"`
+	// Extra headers, e.g. x-hwid / x-device-os for panels that limit devices.
+	Headers map[string]string `json:"headers"`
+}
+
 // fetchSubscription downloads a VPN subscription and returns its body together with
 // the informational headers panels attach to it (traffic quota, expiry, title), as JSON.
-func fetchSubscription(url string) (string, error) {
+func fetchSubscription(input string) (string, error) {
+	request := fetchSubscriptionRequest{URL: strings.TrimSpace(input)}
+	if strings.HasPrefix(request.URL, "{") {
+		if err := json.Unmarshal([]byte(input), &request); err != nil {
+			return "", platerrors.PlatformError{
+				Code:    platerrors.InvalidConfig,
+				Message: "invalid subscription request",
+				Cause:   platerrors.ToPlatformError(err),
+			}
+		}
+	}
+	url := request.URL
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return "", platerrors.PlatformError{
@@ -55,6 +75,11 @@ func fetchSubscription(url string) (string, error) {
 	}
 	req.Header.Set("User-Agent", subscriptionUserAgent)
 	req.Header.Set("Accept", "*/*")
+	for name, value := range request.Headers {
+		if name != "" && value != "" {
+			req.Header.Set(name, value)
+		}
+	}
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)

@@ -24,6 +24,7 @@ import {
 } from './parse';
 import {proclientStore, Subscription} from './store';
 import {ServerRepository} from '../../model/server';
+import {deviceHeaders} from '../device';
 import {getDefaultMethodChannel} from '../method_channel';
 
 const DEFAULT_UPDATE_INTERVAL_HOURS = 6;
@@ -181,9 +182,16 @@ export class SubscriptionManager {
 }
 
 async function download(url: string): Promise<Downloaded> {
+  // Panels that limit devices identify this one by these headers.
+  let headers: Record<string, string> = {};
+  try {
+    headers = await deviceHeaders();
+  } catch {
+    // Send without them.
+  }
   const raw = await getDefaultMethodChannel().invokeMethod(
     'FetchSubscription',
-    url
+    JSON.stringify({url, headers})
   );
   const fetched: FetchedSubscription = JSON.parse(raw);
   const body = fetched.body ?? '';

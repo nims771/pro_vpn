@@ -99,7 +99,51 @@ class ProclientStore {
     );
   }
 
+  // ---- connection test through the server (HTTP request time) ----
+
+  private latencySource?: () => Promise<number>;
+
+  /** Called by the platform layer when it can test through the tunnel. */
+  setLatencySource(source: () => Promise<number>) {
+    this.latencySource = source;
+  }
+
+  /** Milliseconds of an HTTP request through the server; -1 = failed. */
+  async measureLatency(): Promise<number | undefined> {
+    if (!this.latencySource) return undefined;
+    try {
+      return await this.latencySource();
+    } catch {
+      return -1;
+    }
+  }
+
   // ---- ping ----
+
+  /** Servers being re-pinged one by one (tap on a card's ping). */
+  pingingIds = new Set<string>();
+
+  async pingOne(
+    server: {id: string; address: string},
+    measure: (addresses: string[]) => Promise<Record<string, number>>
+  ): Promise<number | null | undefined> {
+    if (!server.address || this.pingingIds.has(server.id)) return undefined;
+    this.pingingIds.add(server.id);
+    this.emit();
+    try {
+      const results = await measure([server.address]);
+      const ms = results[server.address];
+      const value = typeof ms === 'number' && ms >= 0 ? ms : null;
+      this.pings = {...this.pings, [server.id]: value};
+      return value;
+    } catch (e) {
+      console.warn(`ping failed: ${e}`);
+      return undefined;
+    } finally {
+      this.pingingIds.delete(server.id);
+      this.emit();
+    }
+  }
 
   /** Latency per server id in ms; null = unreachable; absent = not measured. */
   pings: Record<string, number | null> = {};

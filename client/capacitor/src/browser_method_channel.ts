@@ -47,7 +47,13 @@ export class CapacitorBrowserMethodChannel implements MethodChannel {
       }
       case 'FetchSubscription': {
         // Fork: same contract as Go fetchSubscription (CORS permitting).
-        const res = await fetch(params, {credentials: 'omit'});
+        const request = params.trim().startsWith('{')
+          ? JSON.parse(params)
+          : {url: params, headers: {}};
+        const res = await fetch(request.url, {
+          credentials: 'omit',
+          headers: request.headers,
+        });
         if (!res.ok) {
           throw new Error(`FetchSubscription failed: HTTP ${res.status}`);
         }

@@ -284,12 +284,16 @@ export class App {
         return false;
       }
     };
+    // Fork: no privacy notice screen; it is accepted silently.
     if (!this.arePrivacyTermsAcked()) {
-      // Fork: wait for the intro, or the dialog would cover it.
-      void whenIntroDone().then(() => this.displayPrivacyView());
-    } else if (this.rootEl.$.serversView.shouldShowZeroState) {
-      this.rootEl.$.addServerView.open = true;
+      this.settings.set(SettingsKey.PRIVACY_ACK, 'true');
     }
+    // Wait for the intro, or the dialog would cover it.
+    void whenIntroDone().then(() => {
+      if (this.rootEl.$.serversView.shouldShowZeroState) {
+        this.rootEl.$.addServerView.open = true;
+      }
+    });
   }
 
   showLocalizedError(error?: Error, toastDuration = 10000) {
@@ -688,9 +692,7 @@ export class App {
         address: server.address,
       });
       console.log(`connected to server ${serverId}`);
-      this.rootEl.showToast(
-        this.localize('server-connected', 'serverName', server.name)
-      );
+      // Fork: no toast; the bottom bar already shows the status.
       this.maybeShowAutoConnectDialog();
     } catch (e) {
       console.error(`could not connect to server ${serverId}: ${e}`);
@@ -839,9 +841,6 @@ export class App {
       );
 
       console.log(`disconnected from server ${serverId}`);
-      this.rootEl.showToast(
-        this.localize('server-disconnected', 'serverName', server.name)
-      );
     } catch (e) {
       this.updateServerListItem(serverId, {
         connectionState: ServerConnectionState.CONNECTED,

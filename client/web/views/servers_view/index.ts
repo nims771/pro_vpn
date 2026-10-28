@@ -28,7 +28,7 @@ import './server_list';
 import './proclient_panel';
 import './server_list_item/proclient_ui';
 import {ServerListItem as _ServerListItem} from './server_list_item';
-import {pingServers} from '../../app/subscriptions/ping';
+import {pingServer, pingServers} from '../../app/subscriptions/ping';
 import {proclientStore} from '../../app/subscriptions/store';
 
 export type ServerListItem = _ServerListItem;
@@ -122,24 +122,11 @@ export class ServerList extends LitElement {
 
       /* Fork: the single connect button pinned to the bottom of the page. */
       .connect-bar {
-        background: linear-gradient(
-          to top,
-          var(--outline-background) 70%,
-          transparent
-        );
         bottom: 0;
-        box-sizing: border-box;
-        display: flex;
-        justify-content: center;
         margin-top: auto;
-        padding: 18px 16px max(28px, calc(env(safe-area-inset-bottom) + 16px));
+        padding-top: 12px;
         position: sticky;
         z-index: 2;
-      }
-
-      .connect-bar connect-button {
-        max-width: 280px;
-        width: 76%;
       }
 
       /* Fork: "Servers · 3" + ping button above the list. */
@@ -204,6 +191,15 @@ export class ServerList extends LitElement {
     ServerConnectionState.DISCONNECTING,
   ];
 
+  /** Result of the last tap-to-test, shown on the left of the bottom bar. */
+  @state() private test?: {
+    serverId: string;
+    kind: 'http' | 'ping';
+    running: boolean;
+    ms?: number | null;
+  };
+  private autoTestedFor = '';
+
   private unsubscribeStore?: () => void;
   private lastPingedIds = '';
   private pingTimer?: number;
@@ -211,6 +207,7 @@ export class ServerList extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.addEventListener('ProclientSelectServer', this.onSelectServer);
+    this.addEventListener('ProclientPingServer', this.onPingServer);
     this.unsubscribeStore = proclientStore.subscribe(() =>
       this.requestUpdate()
     );
@@ -219,12 +216,25 @@ export class ServerList extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.removeEventListener('ProclientSelectServer', this.onSelectServer);
+    this.removeEventListener('ProclientPingServer', this.onPingServer);
     this.unsubscribeStore?.();
   }
 
   // Ping automatically whenever the set of servers changes (app start,
   // subscription added or refreshed).
   updated() {
+    // Test the connection once, automatically, right after connecting.
+    const active = this.activeServer;
+    if (
+      active?.connectionState === ServerConnectionState.CONNECTED &&
+      this.autoTestedFor !== active.id
+    ) {
+      this.autoTestedFor = active.id;
+      void this.runTest();
+    } else if (!active) {
+      this.autoTestedFor = '';
+    }
+
     const ids = (this.servers ?? []).map(s => s.id).join(',');
     if (ids && ids !== this.lastPingedIds) {
       this.lastPingedIds = ids;
@@ -299,32 +309,95 @@ export class ServerList extends LitElement {
     );
   }
 
+  /** Tap on a card's ping: measure that server again. */
+  private onPingServer = (event: Event) => {
+    const serverId = (event as CustomEvent).detail?.serverId;
+    const server = this.servers?.find(s => s.id === serverId);
+    if (server) void pingServer({id: server.id, address: server.address});
+  };
+
+  /**
+   * Tap on the bottom bar's status: while connected, time a real HTTP request
+   * through the server; otherwise ping the chosen server.
+   */
+  private async runTest() {
+    const target = this.targetServer;
+    if (!target || this.test?.running) return;
+    const connected =
+      target.connectionState === ServerConnectionState.CONNECTED ||
+      target.connectionState === ServerConnectionState.RECONNECTING;
+    const kind = connected ? 'http' : 'ping';
+    this.test = {serverId: target.id, kind, running: true};
+    let ms: number | null | undefined;
+    if (kind === 'http') {
+      const result = await proclientStore.measureLatency();
+      ms = result === undefined ? undefined : result >= 0 ? result : null;
+    } else {
+      ms = await pingServer({id: target.id, address: target.address});
+    }
+    this.test = {serverId: target.id, kind, running: false, ms};
+  }
+
+  private statusTexts(target: ServerListItem): [string, string] {
+    const state = target.connectionState;
+    const name = withFlag(target.name);
+    const test = this.test?.serverId === target.id ? this.test : undefined;
+    const up =
+      state === ServerConnectionState.CONNECTED ||
+      state === ServerConnectionState.RECONNECTING;
+
+    if (state === ServerConnectionState.CONNECTING) {
+      return [this.localize('connecting-server-state'), name];
+    }
+    if (state === ServerConnectionState.DISCONNECTING) {
+      return [this.localize('disconnecting-server-state'), name];
+    }
+    if (state === ServerConnectionState.RECONNECTING) {
+      return [this.localize('reconnecting-server-state'), name];
+    }
+    if (test?.running) {
+      return [this.localize('proclient-test-running'), name];
+    }
+    if (up) {
+      if (test?.kind === 'http' && test.ms !== undefined) {
+        return [
+          test.ms === null
+            ? this.localize('proclient-test-fail')
+            : this.localize('proclient-test-ok', 'ms', String(test.ms)),
+          name,
+        ];
+      }
+      return [this.localize('proclient-test-tap-connected'), name];
+    }
+    if (test?.kind === 'ping' && test.ms !== undefined) {
+      return [
+        test.ms === null
+          ? this.localize('proclient-ping-fail')
+          : this.localize('proclient-ping-result', 'ms', String(test.ms)),
+        name,
+      ];
+    }
+    return [this.localize('proclient-ping-tap'), name];
+  }
+
   private renderConnectBar() {
     const target = this.targetServer;
     if (!target) return '';
-    const state = target.connectionState;
-    let label: string;
-    switch (state) {
-      case ServerConnectionState.CONNECTING:
-      case ServerConnectionState.DISCONNECTING:
-      case ServerConnectionState.RECONNECTING:
-        label = this.localize(`${state}-server-state`);
-        break;
-      case ServerConnectionState.CONNECTED:
-        label = this.localize('disconnect-button-label');
-        break;
-      default:
-        label = this.localize('connect-button-label');
-    }
+    const [primary, secondary] = this.statusTexts(target);
     return html`
       <div class="connect-bar">
-        <connect-button
-          connection-state=${state}
+        <connect-bar
+          connection-state=${target.connectionState}
           server-id=${target.id}
-          label=${label}
+          primary=${primary}
+          secondary=${secondary}
+          ?testing=${this.test?.running ?? false}
           ?disabled=${!this.activeServer && Boolean(target.errorMessageId)}
-          @click=${this.onConnectButton}
-        ></connect-button>
+          @connect-toggle=${this.onConnectButton}
+          @status-tap=${() => {
+            void this.runTest();
+          }}
+        ></connect-bar>
       </div>
     `;
   }
@@ -415,6 +488,7 @@ export class ServerList extends LitElement {
           .selectedId=${this.targetServer?.id ?? ''}
           .pings=${proclientStore.pings}
           ?pinging=${proclientStore.pinging}
+          .pingingIds=${new Set(proclientStore.pingingIds)}
         ></server-list>
         ${this.renderConnectBar()}
       `;
@@ -438,4 +512,9 @@ function writeChosenServer(serverId: string) {
   } catch {
     // ignore
   }
+}
+
+/** Servers whose name has no country flag get a globe instead. */
+function withFlag(name: string): string {
+  return /^\s*[\u{1F1E6}-\u{1F1FF}]{2}/u.test(name) ? name : `🌐 ${name}`;
 }

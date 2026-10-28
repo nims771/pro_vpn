@@ -16,6 +16,7 @@ import {Capacitor} from '@capacitor/core';
 import type {PluginListenerHandle} from '@capacitor/core';
 import {CapacitorPluginOutline} from '@capacitor-plugin-outline';
 import {AbstractClipboard} from '@web/app/clipboard';
+import {setDeviceInfoSource} from '@web/app/device';
 import type {EnvironmentVariables} from '@web/app/environment';
 import {showIntro} from '@web/app/intro';
 import {main} from '@web/app/main';
@@ -249,6 +250,10 @@ if (hasDeviceSupport && Capacitor.getPlatform() === 'android') {
   proclientStore.setTrafficSource(() =>
     CapacitorPluginOutline.getTrafficStats()
   );
+  proclientStore.setLatencySource(
+    async () => (await CapacitorPluginOutline.measureLatency()).ms
+  );
+  setDeviceInfoSource(() => CapacitorPluginOutline.getDeviceInfo());
 } else if (!hasDeviceSupport && location.search.includes('demoTraffic')) {
   // Browser preview only (?demoTraffic): simulated counters to design the panel.
   let rx = 300 * 1024 * 1024;
@@ -257,6 +262,10 @@ if (hasDeviceSupport && Capacitor.getPlatform() === 'android') {
     rx += 900 * 1024 + Math.random() * 600 * 1024;
     tx += 60 * 1024 + Math.random() * 40 * 1024;
     return {rxBytes: rx, txBytes: tx};
+  });
+  proclientStore.setLatencySource(async () => {
+    await new Promise(resolve => setTimeout(resolve, 600));
+    return 120 + Math.round(Math.random() * 80);
   });
 }
 

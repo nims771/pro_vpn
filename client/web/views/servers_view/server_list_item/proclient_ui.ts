@@ -719,3 +719,198 @@ export class ConnectButton extends LitElement {
     `;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fork: bottom bar (status on the left — tap to test —, pill button right).
+
+@customElement('connect-bar')
+export class ConnectBar extends LitElement {
+  @property({attribute: 'connection-state', reflect: true})
+  connectionState: ServerConnectionState = ServerConnectionState.DISCONNECTED;
+  @property({attribute: 'server-id'}) serverId = '';
+  @property() primary = '';
+  @property() secondary = '';
+  @property({type: Boolean}) testing = false;
+  @property({type: Boolean, reflect: true}) disabled = false;
+
+  static styles = css`
+    :host {
+      display: block;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .bar {
+      align-items: center;
+      background: #383a39;
+      border-radius: 26px 26px 0 0;
+      box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.18);
+      box-sizing: border-box;
+      display: flex;
+      gap: 12px;
+      padding: 16px 16px max(16px, env(safe-area-inset-bottom)) 22px;
+    }
+
+    .status {
+      all: unset;
+      cursor: pointer;
+      flex: 1;
+      font-family: var(--outline-font-family);
+      min-width: 0;
+    }
+
+    .l1 {
+      color: #f2f2f2;
+      font-size: 0.95rem;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .l2 {
+      align-items: center;
+      color: #a8aea9;
+      display: flex;
+      font-size: 0.78rem;
+      gap: 6px;
+      margin-top: 3px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .testing .l1 {
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    .pill {
+      all: unset;
+      align-items: center;
+      background: #4a4d4b;
+      border: 3px solid #6c706d;
+      border-radius: 999px;
+      box-sizing: border-box;
+      color: #f5f5f5;
+      cursor: pointer;
+      display: flex;
+      flex: none;
+      font-family: var(--outline-font-family);
+      font-size: 1.15rem;
+      height: 60px;
+      justify-content: center;
+      letter-spacing: 0.01em;
+      min-width: 150px;
+      padding: 0 26px;
+      position: relative;
+      transition:
+        background 0.3s ease,
+        border-color 0.3s ease,
+        color 0.3s ease,
+        box-shadow 0.3s ease,
+        transform 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .pill:active {
+      transform: scale(0.96);
+    }
+
+    :host([disabled]) .pill {
+      cursor: default;
+      opacity: 0.5;
+    }
+
+    /* Connected: like the reference, dark fill with a bright ring. */
+    :host([connection-state='connected']) .pill {
+      background: #11613a;
+      border-color: #22a35d;
+      box-shadow: 0 0 0 0 rgba(34, 163, 93, 0.5);
+      color: #c7f5da;
+    }
+
+    :host([connection-state='connecting']) .pill,
+    :host([connection-state='reconnecting']) .pill {
+      animation: ring 1.2s ease-out infinite;
+      background: #1d4a33;
+      border-color: #22a35d;
+      color: #c7f5da;
+    }
+
+    :host([connection-state='disconnecting']) .pill {
+      opacity: 0.7;
+    }
+
+    @keyframes ring {
+      0% {
+        box-shadow: 0 0 0 0 rgba(34, 163, 93, 0.55);
+      }
+      100% {
+        box-shadow: 0 0 0 12px rgba(34, 163, 93, 0);
+      }
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0.45;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pill,
+      .l1 {
+        animation: none !important;
+      }
+    }
+  `;
+
+  private get pillLabel(): string {
+    // English on purpose (as requested), like other VPN clients.
+    switch (this.connectionState) {
+      case ServerConnectionState.CONNECTING:
+        return 'Connecting…';
+      case ServerConnectionState.CONNECTED:
+        return 'Connected';
+      case ServerConnectionState.RECONNECTING:
+        return 'Reconnecting…';
+      case ServerConnectionState.DISCONNECTING:
+        return 'Disconnecting…';
+      default:
+        return 'Connect';
+    }
+  }
+
+  render() {
+    const up =
+      this.connectionState === ServerConnectionState.CONNECTED ||
+      this.connectionState === ServerConnectionState.RECONNECTING;
+    return html`
+      <div class="bar">
+        <button
+          class="status ${this.testing ? 'testing' : ''}"
+          @click=${() => this.fire('status-tap')}
+        >
+          <div class="l1">${this.primary}</div>
+          <div class="l2">
+            <span>${this.secondary}</span>
+            ${up
+              ? html`<span>·</span
+                  ><connection-timer
+                    server-id=${this.serverId}
+                    connection-state=${this.connectionState}
+                  ></connection-timer>`
+              : ''}
+          </div>
+        </button>
+        <button
+          class="pill"
+          ?disabled=${this.disabled}
+          @click=${() => !this.disabled && this.fire('connect-toggle')}
+        >
+          ${this.pillLabel}
+        </button>
+      </div>
+    `;
+  }
+
+  private fire(type: string) {
+    this.dispatchEvent(new CustomEvent(type, {bubbles: true, composed: true}));
+  }
+}

@@ -235,6 +235,11 @@ export class RootNavigation extends LitElement {
               <md-icon id="open-in-new-icon">open_in_new</md-icon>
             </a>
           </md-list-item>
+          <md-list-item @click=${() => this.changePage('device')}>
+            <md-ripple></md-ripple>
+            <md-icon slot="start">fingerprint</md-icon>
+            ${this.localize('device-page-title')}
+          </md-list-item>
           <md-list-item @click=${() => this.changePage('language')}>
             <md-ripple></md-ripple>
             <md-icon slot="start">language</md-icon>

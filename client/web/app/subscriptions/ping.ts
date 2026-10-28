@@ -30,3 +30,11 @@ export function pingServers(
 ): Promise<void> {
   return proclientStore.pingServers(servers, measure);
 }
+
+/** Re-pings one server (tap on its ping); returns ms, null if no answer. */
+export function pingServer(server: {
+  id: string;
+  address: string;
+}): Promise<number | null | undefined> {
+  return proclientStore.pingOne(server, measure);
+}

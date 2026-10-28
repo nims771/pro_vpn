@@ -51,6 +51,7 @@ export class ServerList extends LitElement {
   /** Fork: latency per server id (ms / null), and whether a ping is running. */
   @property({attribute: false}) pings: Record<string, number | null> = {};
   @property({type: Boolean}) pinging = false;
+  @property({attribute: false}) pingingIds: Set<string> = new Set();
 
   // Fork: one compact card per server (also when there is only one); the
   // connect button lives at the bottom of the screen.
@@ -62,7 +63,7 @@ export class ServerList extends LitElement {
             ?darkMode=${this.darkMode}
             ?selected=${server.id === this.selectedId}
             .ping=${this.pings[server.id]}
-            ?pinging=${this.pinging}
+            ?pinging=${this.pinging || this.pingingIds.has(server.id)}
             .localize=${this.localize}
             .server=${server}
           ></server-row-card>`

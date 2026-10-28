@@ -39,14 +39,14 @@ export class ProclientPanel extends LitElement {
       width: 100%;
       max-width: 600px;
       margin: 0 auto;
-      padding: 8px 8px 0;
+      padding: 6px 8px 0;
       font-family: var(--outline-font-family);
       color: var(--outline-text-color);
     }
 
     .panel {
       background: var(--outline-card-background);
-      border-radius: var(--outline-corner);
+      border-radius: 14px;
       box-shadow: var(--outline-elevation);
       overflow: hidden;
     }
@@ -57,24 +57,25 @@ export class ProclientPanel extends LitElement {
     }
 
     .sub {
-      padding: 12px 8px 14px 16px;
+      padding: 8px 6px 10px 12px;
     }
 
     .sub-head {
       align-items: center;
       display: flex;
-      gap: 10px;
+      gap: 8px;
     }
 
     .sub-icon {
       background: rgba(var(--outline-primary-rgb), 0.12);
-      border-radius: 10px;
+      border-radius: 8px;
       color: var(--outline-primary);
       display: grid;
       flex: none;
-      height: 36px;
+      height: 28px;
       place-items: center;
-      width: 36px;
+      width: 28px;
+      --md-icon-size: 18px;
     }
 
     .sub-title {
@@ -83,7 +84,7 @@ export class ProclientPanel extends LitElement {
     }
 
     .sub-name {
-      font-size: 1rem;
+      font-size: 0.88rem;
       font-weight: 500;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -92,8 +93,8 @@ export class ProclientPanel extends LitElement {
 
     .sub-meta {
       color: var(--outline-label-color);
-      font-size: 0.75rem;
-      margin-top: 2px;
+      font-size: 0.68rem;
+      margin-top: 0;
     }
 
     .sub-meta.error {
@@ -102,7 +103,12 @@ export class ProclientPanel extends LitElement {
 
     md-icon-button {
       --md-icon-button-icon-color: var(--outline-label-color);
+      --md-icon-button-icon-size: 20px;
+      --md-icon-button-state-layer-height: 32px;
+      --md-icon-button-state-layer-width: 32px;
       flex: none;
+      height: 32px;
+      width: 32px;
     }
 
     .spin md-icon {
@@ -112,8 +118,8 @@ export class ProclientPanel extends LitElement {
     .bar {
       background: rgba(var(--outline-primary-rgb), 0.14);
       border-radius: 99px;
-      height: 8px;
-      margin: 12px 8px 0 0;
+      height: 5px;
+      margin: 8px 6px 0 0;
       overflow: hidden;
     }
 
@@ -135,10 +141,10 @@ export class ProclientPanel extends LitElement {
     .sub-row {
       display: flex;
       flex-wrap: wrap;
-      font-size: 0.8rem;
-      gap: 4px 12px;
+      font-size: 0.7rem;
+      gap: 2px 10px;
       justify-content: space-between;
-      margin: 8px 8px 0 0;
+      margin: 5px 6px 0 0;
     }
 
     .muted {
@@ -155,7 +161,7 @@ export class ProclientPanel extends LitElement {
       display: grid;
       gap: 8px;
       grid-template-columns: 1fr 1fr;
-      padding: 12px 16px;
+      padding: 6px 12px 8px;
     }
 
     .speed-item {
@@ -166,12 +172,12 @@ export class ProclientPanel extends LitElement {
     }
 
     .speed-arrow {
-      border-radius: 8px;
+      border-radius: 6px;
       display: grid;
       flex: none;
-      height: 28px;
+      height: 22px;
       place-items: center;
-      width: 28px;
+      width: 22px;
     }
 
     .speed-arrow.down {
@@ -185,12 +191,12 @@ export class ProclientPanel extends LitElement {
     }
 
     .speed-arrow md-icon {
-      font-size: 18px;
-      --md-icon-size: 18px;
+      font-size: 15px;
+      --md-icon-size: 15px;
     }
 
     .speed-value {
-      font-size: 0.95rem;
+      font-size: 0.82rem;
       font-variant-numeric: tabular-nums;
       font-weight: 500;
       white-space: nowrap;

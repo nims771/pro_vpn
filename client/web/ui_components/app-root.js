@@ -62,6 +62,8 @@ import '../views/root_view/root_header';
 import '../views/root_view/root_navigation';
 // eslint-disable-next-line n/no-missing-import
 import '../views/appearance_view';
+// Fork: device page with the HWID.
+import '../views/device_view';
 // eslint-disable-next-line n/no-missing-import
 import * as i18n from '@outline/infrastructure/i18n';
 import {AppLocalizeBehavior} from '@polymer/app-localize-behavior/app-localize-behavior.js';
@@ -372,6 +374,13 @@ export class AppRoot extends mixinBehaviors(
             selected-appearance="[[selectedAppearance]]"
             localize="[[localize]]"
           ></appearance-view>
+          <device-view
+            name="device"
+            id="deviceView"
+            localize="[[localize]]"
+            version="[[appVersion]]"
+            build="[[appBuild]]"
+          ></device-view>
         </iron-pages>
       </div>
 

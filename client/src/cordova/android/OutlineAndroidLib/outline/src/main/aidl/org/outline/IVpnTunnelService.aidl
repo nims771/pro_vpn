@@ -67,4 +67,11 @@ interface IVpnTunnelService {
    * @return {downloadBytes, uploadBytes}.
    */
   long[] getTrafficStats();
+
+  /**
+   * Fork: times an HTTP request made through the server (connection test).
+   *
+   * @return milliseconds, or -1 if not connected or the request failed.
+   */
+  long measureLatency();
 }

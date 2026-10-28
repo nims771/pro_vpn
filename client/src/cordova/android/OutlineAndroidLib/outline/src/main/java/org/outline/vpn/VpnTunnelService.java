@@ -153,6 +153,16 @@ public class VpnTunnelService extends VpnService {
     public long[] getTrafficStats() {
       return new long[] {Tun2socks.totalDownloadBytes(), Tun2socks.totalUploadBytes()};
     }
+
+    @Override
+    public long measureLatency() {
+      final RemoteDevice device;
+      synchronized (VpnTunnelService.this) {
+        device = VpnTunnelService.this.remoteDevice;
+      }
+      // Blocks up to ~5s; runs on the binder thread, outside the service lock.
+      return device == null ? -1 : device.measureLatency();
+    }
   };
 
   @Override

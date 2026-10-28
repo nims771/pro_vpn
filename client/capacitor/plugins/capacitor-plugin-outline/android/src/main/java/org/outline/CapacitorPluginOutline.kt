@@ -240,6 +240,44 @@ class CapacitorPluginOutline : Plugin() {
     }
   }
 
+  // Fork: real connection test through the server (HTTP request time).
+  @PluginMethod
+  fun measureLatency(call: PluginCall) {
+    executor.execute {
+      try {
+        val service = synchronized(stateLock) { vpnTunnelService }
+        if (service == null) {
+          sendErrorResult(call, vpnServiceUnavailableError())
+          return@execute
+        }
+        call.resolve(JSObject().apply { put("ms", service.measureLatency()) })
+      } catch (e: Exception) {
+        sendErrorResult(call, platformErrorFromException(e))
+      }
+    }
+  }
+
+  // Fork: stable device identity for the HWID shown in settings and sent to
+  // subscription panels. ANDROID_ID is unique per device + app signing key.
+  @PluginMethod
+  fun getDeviceInfo(call: PluginCall) {
+    try {
+      val androidId = android.provider.Settings.Secure.getString(
+        baseContext().contentResolver,
+        android.provider.Settings.Secure.ANDROID_ID
+      ) ?: ""
+      call.resolve(JSObject().apply {
+        put("deviceId", androidId)
+        put("manufacturer", android.os.Build.MANUFACTURER ?: "")
+        put("model", android.os.Build.MODEL ?: "")
+        put("os", "Android")
+        put("osVersion", android.os.Build.VERSION.RELEASE ?: "")
+      })
+    } catch (e: Exception) {
+      sendErrorResult(call, platformErrorFromException(e))
+    }
+  }
+
   // Fork: bytes relayed through the tunnel, for the speed / session traffic display.
   @PluginMethod
   fun getTrafficStats(call: PluginCall) {

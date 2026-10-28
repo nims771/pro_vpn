@@ -15,7 +15,7 @@ import {Corner, type Menu} from '@material/web/menu/menu';
 
 import {Localizer} from '@outline/infrastructure/i18n';
 import {css, html, LitElement} from 'lit';
-import {customElement, property, state} from 'lit/decorators.js';
+import {customElement, property, query, state} from 'lit/decorators.js';
 import {createRef, Ref, ref} from 'lit/directives/ref.js';
 
 import '../../server_connection_indicator';
@@ -401,12 +401,14 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
         cursor: pointer;
         gap: 0 10px;
         grid-gap: 0 10px;
-        grid-template-columns: auto 1fr auto auto;
+        grid-template-columns: auto 1fr auto;
         grid-template-rows: auto auto;
         grid-template-areas:
-          'radio metadata ping menu'
-          'footer footer footer footer';
-        padding: 6px 0 6px 12px;
+          'radio metadata ping'
+          'footer footer footer';
+        padding: 9px 12px 9px 12px;
+        -webkit-touch-callout: none;
+        user-select: none;
         transition:
           border-color 0.25s ease,
           background 0.25s ease;
@@ -453,7 +455,21 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
       }
 
       .card-footer {
-        margin: 6px 0 -6px -12px;
+        margin: 6px -12px -9px -12px;
+      }
+
+      button.card-ping {
+        border: 0;
+        cursor: pointer;
+        font-family: var(--outline-font-family);
+        font-size: 0.72rem;
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        line-height: 1.4;
+      }
+
+      button.card-ping:active {
+        transform: scale(0.94);
       }
 
       .card-metadata-server-name {
@@ -516,13 +532,14 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
           opacity: 0.4;
         }
       }
-
-      .card-menu-button {
-        align-self: center;
-        margin-right: -8px;
-      }
     `,
   ];
+
+  // Fork: no "⋮" button; press and hold a card for rename / remove.
+  @query('.card') private cardEl?: HTMLElement;
+  private holdTimer?: number;
+  private holdStart?: {x: number; y: number};
+  private longPressed = false;
 
   render() {
     const {elements} = getSharedComponents(this);
@@ -534,6 +551,12 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
         aria-checked=${this.selected ? 'true' : 'false'}
         tabindex="0"
         @click=${this.select}
+        @contextmenu=${(e: Event) => e.preventDefault()}
+        @pointerdown=${this.holdBegin}
+        @pointermove=${this.holdMove}
+        @pointerup=${this.holdEnd}
+        @pointercancel=${this.holdEnd}
+        @pointerleave=${this.holdEnd}
         @keydown=${(e: KeyboardEvent) =>
           (e.key === 'Enter' || e.key === ' ') && this.select(e)}
       >
@@ -541,33 +564,89 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
         <div class="card-metadata" aria-labelledby="server-name">
           <div>${elements.metadataText} ${elements.status}</div>
         </div>
-        ${this.renderPing()} ${elements.menuButton} ${elements.errorFooter}
+        ${this.renderPing()} ${elements.errorFooter}
       </div>
       ${elements.menu} ${elements.renameDialog}
     `;
   }
 
+  private holdBegin(e: PointerEvent) {
+    this.longPressed = false;
+    this.holdStart = {x: e.clientX, y: e.clientY};
+    window.clearTimeout(this.holdTimer);
+    this.holdTimer = window.setTimeout(() => {
+      this.longPressed = true;
+      const menu = this.menu.value;
+      if (menu && this.cardEl) {
+        menu.anchorElement = this.cardEl;
+        menu.show();
+      }
+    }, 550);
+  }
+
+  private holdMove(e: PointerEvent) {
+    if (
+      this.holdStart &&
+      Math.hypot(e.clientX - this.holdStart.x, e.clientY - this.holdStart.y) >
+        10
+    ) {
+      window.clearTimeout(this.holdTimer);
+    }
+  }
+
+  private holdEnd() {
+    window.clearTimeout(this.holdTimer);
+  }
+
   private renderPing() {
-    if (this.pinging && this.ping === undefined) {
-      return html`<span class="card-ping wait">···</span>`;
-    }
-    if (this.ping === undefined) return html`<span></span>`;
-    if (this.ping === null) {
-      return html`<span
-        class="card-ping dead ${this.pinging ? 'wait' : ''}"
-        title=${this.localize('unreachable-server-state')}
-        >—</span
-      >`;
-    }
-    const level = this.ping < 150 ? 'good' : this.ping < 350 ? 'ok' : 'bad';
-    return html`<span class="card-ping ${level} ${this.pinging ? 'wait' : ''}"
-      >${this.localize('proclient-ms', 'ms', String(this.ping))}</span
-    >`;
+    const content =
+      this.ping === undefined
+        ? this.pinging
+          ? '···'
+          : '—'
+        : this.ping === null
+          ? '—'
+          : this.localize('proclient-ms', 'ms', String(this.ping));
+    const level =
+      this.ping === undefined
+        ? 'wait'
+        : this.ping === null
+          ? 'dead'
+          : this.ping < 150
+            ? 'good'
+            : this.ping < 350
+              ? 'ok'
+              : 'bad';
+    // Tap on the ping measures this server again, in real time.
+    return html`<button
+      class="card-ping ${level} ${this.pinging ? 'wait' : ''}"
+      title=${this.ping === null
+        ? this.localize('unreachable-server-state')
+        : this.localize('proclient-ping-button')}
+      @click=${this.repingClicked}
+      @pointerdown=${(e: Event) => e.stopPropagation()}
+    >
+      ${content}
+    </button>`;
+  }
+
+  private repingClicked(e: Event) {
+    e.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent('ProclientPingServer', {
+        detail: {serverId: this.server.id},
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 
   private select(event: Event) {
-    // The menu button lives inside the card: don't treat it as a selection.
-    if (event.composedPath().some(el => el === this.menuButton.value)) return;
+    if (this.longPressed) {
+      this.longPressed = false;
+      event.preventDefault();
+      return;
+    }
     this.dispatchEvent(
       new CustomEvent('ProclientSelectServer', {
         detail: {serverId: this.server.id},

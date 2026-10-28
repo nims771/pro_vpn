@@ -20,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"localhost/client/go/outline"
 	"localhost/client/go/outline/connectivity"
@@ -82,6 +83,27 @@ func (d *RemoteDevice) GetHealthStatus() *perrs.PlatformError {
 // It blocks for up to ~10 seconds.
 func (d *RemoteDevice) CheckHealth() *perrs.PlatformError {
 	return perrs.ToPlatformError(connectivity.CheckTCPConnectivity(d.client))
+}
+
+// latencyTestURLs answer quickly with an empty 204; the first one to succeed wins.
+var latencyTestURLs = []string{
+	"http://cp.cloudflare.com/generate_204",
+	"http://connectivitycheck.gstatic.com/generate_204",
+}
+
+// MeasureLatency times a real HTTP request made through the server, like the
+// "connection test" of other VPN clients. Returns milliseconds, or -1 if the
+// request didn't succeed within 5 seconds.
+func (d *RemoteDevice) MeasureLatency() int64 {
+	start := time.Now()
+	if err := connectivity.CheckTCPConnectivityWithHTTP(5*time.Second, d.client, latencyTestURLs); err != nil {
+		return -1
+	}
+	ms := time.Since(start).Milliseconds()
+	if ms < 1 {
+		ms = 1
+	}
+	return ms
 }
 
 func (d *RemoteDevice) Write(p []byte) (int, error) {
