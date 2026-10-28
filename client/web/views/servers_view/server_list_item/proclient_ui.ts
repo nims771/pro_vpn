@@ -500,7 +500,7 @@ export class ConnectButton extends LitElement {
     :host {
       --accent: var(--outline-primary);
       --accent-dark: var(--outline-primary-dark, var(--outline-primary));
-      --radius: 16px;
+      --radius: 20px;
 
       display: block;
       position: relative;
@@ -523,7 +523,7 @@ export class ConnectButton extends LitElement {
       font-size: 1.05rem;
       font-weight: 600;
       gap: 12px;
-      height: 58px;
+      height: 62px;
       justify-content: center;
       letter-spacing: 0.01em;
       overflow: hidden;

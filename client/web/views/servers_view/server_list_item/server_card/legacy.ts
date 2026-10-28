@@ -24,7 +24,6 @@ import './server_info_dialog';
 import '../proclient_ui';
 import {ServerListItem, ServerListItemElement, ServerListItemEvent} from '..';
 import {ServerConnectionState} from '../../server_connection_indicator';
-import {maskAddress} from '../proclient_ui';
 
 const sharedCSS = css`
   /* TODO(daniellacosse): reset via postcss */
@@ -196,6 +195,11 @@ const sharedCSS = css`
   }
 `;
 
+/** Fork: servers whose name has no country flag get a globe instead. */
+function withFlag(name: string): string {
+  return /^\s*[\u{1F1E6}-\u{1F1FF}]{2}/u.test(name) ? name : `🌐 ${name}`;
+}
+
 // TODO(daniellacosse): wrap components in a closure to avoid unnecessary work
 const getSharedComponents = (element: ServerListItemElement & LitElement) => {
   const {server, localize, menu, menuButton} = element;
@@ -277,11 +281,8 @@ const getSharedComponents = (element: ServerListItemElement & LitElement) => {
       metadataText: html`
         <div class="card-metadata-text">
           <h2 class="card-metadata-server-name" id="server-name">
-            ${messages.serverName}
+            ${withFlag(messages.serverName)}
           </h2>
-          <label class="card-metadata-server-address"
-            >${maskAddress(server.address)}</label
-          >
         </div>
       `,
       status: html`
@@ -369,6 +370,9 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
   @property({type: Object}) localize: Localizer;
   /** Fork: the server the bottom connect button acts on. */
   @property({type: Boolean, reflect: true}) selected = false;
+  /** Fork: latency in ms; null = no answer; undefined = not measured. */
+  @property({attribute: false}) ping?: number | null;
+  @property({type: Boolean}) pinging = false;
 
   @state() isRenameDialogOpen = false;
 
@@ -389,18 +393,20 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
             var(--outline-slim-gutter)
         );
 
-        /* Fork: radio | name/address/status | menu; tap selects the server */
+        /* Fork: radio | flag+name/status | ping | menu; tap selects it */
+        --server-name-size: 0.95rem;
         border: 2px solid transparent;
+        border-radius: 14px;
         box-sizing: border-box;
         cursor: pointer;
-        gap: 0 12px;
-        grid-gap: 0 12px;
-        grid-template-columns: auto 1fr auto;
+        gap: 0 10px;
+        grid-gap: 0 10px;
+        grid-template-columns: auto 1fr auto auto;
         grid-template-rows: auto auto;
         grid-template-areas:
-          'radio metadata menu'
-          'footer footer footer';
-        padding: 10px 4px 10px 14px;
+          'radio metadata ping menu'
+          'footer footer footer footer';
+        padding: 6px 0 6px 12px;
         transition:
           border-color 0.25s ease,
           background 0.25s ease;
@@ -447,7 +453,68 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
       }
 
       .card-footer {
-        margin: 8px -4px -10px -14px;
+        margin: 6px 0 -6px -12px;
+      }
+
+      .card-metadata-server-name {
+        margin-bottom: 0;
+      }
+
+      .card-status {
+        font-size: 0.72rem;
+        margin-top: 2px;
+      }
+
+      .card-radio {
+        height: 18px;
+        width: 18px;
+      }
+
+      .card-radio::after {
+        height: 8px;
+        width: 8px;
+      }
+
+      .card-ping {
+        align-self: center;
+        border-radius: 99px;
+        font-family: var(--outline-font-family);
+        font-size: 0.72rem;
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        grid-area: ping;
+        min-width: 44px;
+        padding: 3px 8px;
+        text-align: center;
+        white-space: nowrap;
+      }
+
+      .card-ping.good {
+        background: rgba(22, 163, 74, 0.13);
+        color: #15803d;
+      }
+
+      .card-ping.ok {
+        background: rgba(234, 179, 8, 0.16);
+        color: #a16207;
+      }
+
+      .card-ping.bad,
+      .card-ping.dead {
+        background: rgba(220, 38, 38, 0.12);
+        color: #b91c1c;
+      }
+
+      .card-ping.wait {
+        animation: ping-wait 1s ease-in-out infinite;
+        background: rgba(0, 0, 0, 0.06);
+        color: var(--outline-label-color);
+      }
+
+      @keyframes ping-wait {
+        50% {
+          opacity: 0.4;
+        }
       }
 
       .card-menu-button {
@@ -474,10 +541,28 @@ export class ServerRowCard extends LitElement implements ServerListItemElement {
         <div class="card-metadata" aria-labelledby="server-name">
           <div>${elements.metadataText} ${elements.status}</div>
         </div>
-        ${elements.menuButton} ${elements.errorFooter}
+        ${this.renderPing()} ${elements.menuButton} ${elements.errorFooter}
       </div>
       ${elements.menu} ${elements.renameDialog}
     `;
+  }
+
+  private renderPing() {
+    if (this.pinging && this.ping === undefined) {
+      return html`<span class="card-ping wait">···</span>`;
+    }
+    if (this.ping === undefined) return html`<span></span>`;
+    if (this.ping === null) {
+      return html`<span
+        class="card-ping dead ${this.pinging ? 'wait' : ''}"
+        title=${this.localize('unreachable-server-state')}
+        >—</span
+      >`;
+    }
+    const level = this.ping < 150 ? 'good' : this.ping < 350 ? 'ok' : 'bad';
+    return html`<span class="card-ping ${level} ${this.pinging ? 'wait' : ''}"
+      >${this.localize('proclient-ms', 'ms', String(this.ping))}</span
+    >`;
   }
 
   private select(event: Event) {

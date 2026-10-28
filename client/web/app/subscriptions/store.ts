@@ -99,6 +99,42 @@ class ProclientStore {
     );
   }
 
+  // ---- ping ----
+
+  /** Latency per server id in ms; null = unreachable; absent = not measured. */
+  pings: Record<string, number | null> = {};
+  pinging = false;
+  private pingRun = 0;
+
+  /** Measures all given servers (id + "host:port"); ignores empty addresses. */
+  async pingServers(
+    servers: Array<{id: string; address: string}>,
+    measure: (addresses: string[]) => Promise<Record<string, number>>
+  ): Promise<void> {
+    const targets = servers.filter(s => s.address);
+    if (!targets.length) return;
+    const run = ++this.pingRun;
+    this.pinging = true;
+    this.emit();
+    try {
+      const results = await measure(targets.map(s => s.address));
+      if (run !== this.pingRun) return;
+      const pings = {...this.pings};
+      for (const s of targets) {
+        const ms = results[s.address];
+        pings[s.id] = typeof ms === 'number' && ms >= 0 ? ms : null;
+      }
+      this.pings = pings;
+    } catch (e) {
+      console.warn(`ping failed: ${e}`);
+    } finally {
+      if (run === this.pingRun) {
+        this.pinging = false;
+        this.emit();
+      }
+    }
+  }
+
   // ---- traffic ----
 
   /** Called by the platform layer when it can count tunnel bytes. */

@@ -158,26 +158,69 @@ def recolor_circle(path: Path, primary) -> None:
     img.save(path, optimize=True)
 
 
-def write_all(name, primary, background, custom_icon, cap_assets: Path, web_assets: Path):
+def _fit(art: Image.Image, width: int, height: int) -> Image.Image:
+    scale = min(width / art.width, height / art.height)
+    return art.resize((max(1, round(art.width * scale)), max(1, round(art.height * scale))), Image.LANCZOS)
+
+
+def _centered(canvas: Image.Image, art: Image.Image) -> Image.Image:
+    canvas.alpha_composite(art, ((canvas.width - art.width) // 2, (canvas.height - art.height) // 2))
+    return canvas
+
+
+def _with_border(tile: Image.Image, color=(0, 0, 0, 28), width=3) -> Image.Image:
+    """Тонкая рамка, чтобы белая плитка не терялась на белом фоне."""
+    big = Image.new("RGBA", (tile.width * SS, tile.height * SS), (0, 0, 0, 0))
+    ImageDraw.Draw(big).rounded_rectangle(
+        [0, 0, big.width - 1, big.height - 1], radius=int(big.width * 0.22),
+        outline=color, width=width * SS)
+    out = tile.copy()
+    out.alpha_composite(big.resize(tile.size, Image.LANCZOS))
+    return out
+
+
+def write_all(name, primary, background, custom_icon, cap_assets: Path, web_assets: Path,
+              icon_art: Path | None = None, icon_background: str | None = None):
     p, bg = _rgb(primary), _rgb(background)
-    icon = make_icon(p, bg, custom_icon)
     written = []
 
     def save(img: Image.Image, path: Path, rgb=False):
         (img.convert("RGB") if rgb else img).save(path, optimize=True)
         written.append(path)
 
+    if icon_art:
+        # Картинка (логотип) на однотонной плитке, например на белой.
+        art = Image.open(icon_art).convert("RGBA")
+        tile_rgb = _rgb(icon_background or "#FFFFFF")
+        icon = _centered(Image.new("RGBA", (1024, 1024), tile_rgb + (255,)), _fit(art, 820, 700))
+        foreground = _centered(Image.new("RGBA", (1024, 1024), (0, 0, 0, 0)), _fit(art, 600, 600))
+        icon_bg_layer = Image.new("RGB", (1024, 1024), tile_rgb)
+        splash = Image.new("RGBA", (2732, 2732), bg + (255,))
+        if sum(bg) > 600:  # светлый фон заставки: логотип прямо на нём
+            _centered(splash, _fit(art, 1100, 1100))
+        else:
+            small = _rounded(icon.resize((440, 440), Image.LANCZOS), 0.22)
+            splash.alpha_composite(small, ((2732 - 440) // 2, (2732 - 440) // 2))
+        tile = _with_border(_rounded(icon.resize((274, 274), Image.LANCZOS), 0.22))
+        save(_fit(art, 1200, 1200), web_assets / "intro-logo.png")
+    else:
+        icon = make_icon(p, bg, custom_icon)
+        foreground = make_foreground(custom_icon)
+        icon_bg_layer = _gradient(1024, p, bg)
+        splash = make_splash(bg, icon)
+        tile = _rounded(icon.resize((274, 274), Image.LANCZOS), 0.22)
+
     save(icon, cap_assets / "icon.png", rgb=True)
     save(icon, cap_assets / "icon-only.png", rgb=True)
-    save(make_foreground(custom_icon), cap_assets / "icon-foreground.png")
-    save(_gradient(1024, p, bg), cap_assets / "icon-background.png", rgb=True)
-    splash = make_splash(bg, icon)
+    save(foreground, cap_assets / "icon-foreground.png")
+    save(icon_bg_layer, cap_assets / "icon-background.png", rgb=True)
     save(splash, cap_assets / "splash.png", rgb=True)
     save(splash, cap_assets / "splash-dark.png", rgb=True)
 
-    save(make_brand_logo(icon, name, _shade(p, 0.45)), web_assets / "brand-logo.png")
-    save(make_brand_logo(icon, name, (255, 255, 255)), web_assets / "brand-logo-dark.png")
-    save(_rounded(icon.resize((274, 274), Image.LANCZOS), 0.22), web_assets / "logo-nav.png")
+    brand_icon = _with_border(icon) if icon_art else icon
+    save(make_brand_logo(brand_icon, name, _shade(p, 0.45)), web_assets / "brand-logo.png")
+    save(make_brand_logo(brand_icon, name, (255, 255, 255)), web_assets / "brand-logo-dark.png")
+    save(tile, web_assets / "logo-nav.png")
 
     # Бирюзовые картинки Outline перекрашиваем в фирменный цвет. Всегда из
     # оригинала (branding/.orig), чтобы повторный запуск не «копил» оттенок.

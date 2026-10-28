@@ -25,6 +25,19 @@ export class CapacitorBrowserMethodChannel implements MethodChannel {
     switch (methodName) {
       case 'ParseTunnelConfig':
         return parseTunnelConfigBrowser(params);
+      case 'PingServers': {
+        // Fork: browsers can't open raw TCP. Report unreachable, except in the
+        // ?demoTraffic preview, which shows stable sample values.
+        const demo = location.search.includes('demoTraffic');
+        const result: Record<string, number> = {};
+        for (const address of JSON.parse(params) as string[]) {
+          let hash = 0;
+          for (const ch of address) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+          result[address] = demo ? 40 + (hash % 260) : -1;
+        }
+        await new Promise(resolve => setTimeout(resolve, demo ? 700 : 0));
+        return JSON.stringify(result);
+      }
       case 'FetchResource': {
         const res = await fetch(params, {credentials: 'omit'});
         if (!res.ok) {

@@ -54,6 +54,11 @@ const (
 	//  - Output: JSON {body, userInfo, title, updateInterval, webPageUrl, supportUrl}
 	MethodFetchSubscription = "FetchSubscription"
 
+	// PingServers measures the TCP connect time to each server.
+	//  - Input: JSON array of "host:port"
+	//  - Output: JSON object {"host:port": milliseconds, or -1 if unreachable}
+	MethodPingServers = "PingServers"
+
 	// Parses the TunnelConfig and extracts the first hop or provider error as needed.
 	//  - Input: the tunnel config text
 	//  - Output: the TunnelConfigJson that Typescript needs
@@ -109,6 +114,13 @@ func InvokeMethod(method string, input string) *InvokeMethodResult {
 
 	case MethodFetchSubscription:
 		content, err := fetchSubscription(input)
+		return &InvokeMethodResult{
+			Value: content,
+			Error: platerrors.ToPlatformError(err),
+		}
+
+	case MethodPingServers:
+		content, err := pingServers(input)
 		return &InvokeMethodResult{
 			Value: content,
 			Error: platerrors.ToPlatformError(err),

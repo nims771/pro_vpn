@@ -28,12 +28,12 @@ export class ServerList extends LitElement {
         box-sizing: border-box;
         display: block;
         margin: 0 auto;
-        padding: 8px;
+        padding: 4px 8px 8px;
         width: 100%;
       }
 
       server-row-card {
-        margin: 0 auto 8px auto;
+        margin: 0 auto 6px auto;
         height: auto;
       }
 
@@ -48,6 +48,9 @@ export class ServerList extends LitElement {
   @property({type: Array}) servers: ServerListItem[] = [];
   /** Fork: id of the server the bottom connect button acts on. */
   @property({type: String}) selectedId = '';
+  /** Fork: latency per server id (ms / null), and whether a ping is running. */
+  @property({attribute: false}) pings: Record<string, number | null> = {};
+  @property({type: Boolean}) pinging = false;
 
   // Fork: one compact card per server (also when there is only one); the
   // connect button lives at the bottom of the screen.
@@ -58,6 +61,8 @@ export class ServerList extends LitElement {
           html`<server-row-card
             ?darkMode=${this.darkMode}
             ?selected=${server.id === this.selectedId}
+            .ping=${this.pings[server.id]}
+            ?pinging=${this.pinging}
             .localize=${this.localize}
             .server=${server}
           ></server-row-card>`

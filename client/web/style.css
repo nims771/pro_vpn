@@ -81,7 +81,7 @@ body {
   --outline-partial-connection-color: var(--outline-primary-light);
   --outline-complete-connection-color: var(--outline-primary-medium);
 
-  --outline-comms-dialog-primary-background-color: var(--outline-dark-primary);
+  --outline-comms-dialog-primary-background-color: #1c2620;
   --outline-comms-dialog-primary-text-color: hsl(0, 0%, 87%);
   --outline-comms-dialog-secondary-text-color: rgba(255, 255, 255, 0.54);
   --outline-app-dialog-primary-background-color: var(--outline-white);
@@ -158,7 +158,7 @@ html.dark {
   --outline-label-color: hsl(0, 0%, 70%);
   --outline-hairline: 1px solid var(--outline-dark-border);
   --outline-elevation: rgb(0 0 0 / 30%) 0px 2px 3px 2px;
-  --outline-comms-dialog-primary-background-color: var(--outline-dark-primary);
+  --outline-comms-dialog-primary-background-color: #1c2620;
   --outline-app-dialog-primary-background-color: var(--outline-dark-card);
 
   /* Input field colors for dark mode */

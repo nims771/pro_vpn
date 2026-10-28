@@ -17,6 +17,7 @@ import type {PluginListenerHandle} from '@capacitor/core';
 import {CapacitorPluginOutline} from '@capacitor-plugin-outline';
 import {AbstractClipboard} from '@web/app/clipboard';
 import type {EnvironmentVariables} from '@web/app/environment';
+import {showIntro} from '@web/app/intro';
 import {main} from '@web/app/main';
 import {
   installDefaultMethodChannel,
@@ -230,6 +231,9 @@ function wireExternalLinkHandling() {
     true
   );
 }
+
+// Fork: animated intro over the app while it starts (title = app name).
+showIntro(document.title || 'ProVPN');
 
 // Bootstrap: install the method channel, wire external links, then hand off
 // to the shared main() — mirroring the Cordova and Electron entry points.

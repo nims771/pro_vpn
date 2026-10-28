@@ -17,6 +17,7 @@ import {OperationTimedOut} from '@outline/infrastructure/timeout_promise';
 
 import {Clipboard} from './clipboard';
 import {EnvironmentVariables} from './environment';
+import {whenIntroDone} from './intro';
 import * as config from './outline_server_repository/config';
 import {Settings, SettingsKey, Appearance} from './settings';
 import {SubscriptionManager} from './subscriptions/manager';
@@ -81,6 +82,14 @@ export function isOutlineAccessKey(url: string): boolean {
 }
 
 const DEFAULT_SERVER_CONNECTION_STATUS_CHANGE_TIMEOUT = 600;
+
+/** Fork: the server didn't answer in time. */
+class ConnectTimeoutError extends Error {
+  constructor() {
+    super('connection attempt timed out');
+    this.name = 'ConnectTimeoutError';
+  }
+}
 
 export class App {
   private localize: Localizer;
@@ -276,7 +285,8 @@ export class App {
       }
     };
     if (!this.arePrivacyTermsAcked()) {
-      this.displayPrivacyView();
+      // Fork: wait for the intro, or the dialog would cover it.
+      void whenIntroDone().then(() => this.displayPrivacyView());
     } else if (this.rootEl.$.serversView.shouldShowZeroState) {
       this.rootEl.$.addServerView.open = true;
     }
@@ -620,6 +630,16 @@ export class App {
     this.serverRepo.rename(serverId, newName);
   }
 
+  // Fork: every connect / disconnect action gets a number. An older attempt
+  // that finishes after a newer one (the user switched to another server or
+  // cancelled while a dead server was still being tried) is ignored, so the
+  // app never gets stuck on a server that doesn't answer.
+  private connectAttempt = 0;
+  // What the user asked for last; a late success of a superseded attempt is
+  // undone when the user had cancelled meanwhile.
+  private wantsDisconnected = false;
+  private static readonly CONNECT_TIMEOUT_MS = 25_000;
+
   private async connectServer(event: CustomEvent) {
     event.stopImmediatePropagation();
 
@@ -637,24 +657,32 @@ export class App {
       return;
 
     const server = this.getServerByServerId(serverId);
-    console.log(`connecting to server ${serverId}`);
+    const attempt = ++this.connectAttempt;
+    this.wantsDisconnected = false;
+    const isCurrent = () => attempt === this.connectAttempt;
+    console.log(`connecting to server ${serverId} (attempt ${attempt})`);
 
+    // Only one tunnel can run: switching drops whatever else was shown as up.
+    this.markOthersDisconnected(serverId);
     this.updateServerListItem(serverId, {
       connectionState: ServerConnectionState.CONNECTING,
     });
+
+    let timer: number | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = window.setTimeout(
+        () => reject(new ConnectTimeoutError()),
+        App.CONNECT_TIMEOUT_MS
+      );
+    });
     try {
-      await server.connect();
-      // Fork: only one tunnel can run; connecting here replaced any other.
-      for (const other of this.rootEl.servers as ServerListItem[]) {
-        if (
-          other.id !== serverId &&
-          other.connectionState !== ServerConnectionState.DISCONNECTED
-        ) {
-          this.updateServerListItem(other.id, {
-            connectionState: ServerConnectionState.DISCONNECTED,
-          });
-        }
+      await Promise.race([server.connect(), timeout]);
+      if (!isCurrent()) {
+        console.log(`attempt ${attempt} finished but was superseded`);
+        if (this.wantsDisconnected) server.disconnect().catch(() => {});
+        return;
       }
+      this.markOthersDisconnected(serverId);
       this.updateServerListItem(serverId, {
         connectionState: ServerConnectionState.CONNECTED,
         address: server.address,
@@ -665,10 +693,22 @@ export class App {
       );
       this.maybeShowAutoConnectDialog();
     } catch (e) {
+      console.error(`could not connect to server ${serverId}: ${e}`);
+      if (!isCurrent()) return; // The user already moved on: stay quiet.
       this.updateServerListItem(serverId, {
         connectionState: ServerConnectionState.DISCONNECTED,
       });
-      console.error(`could not connect to server ${serverId}: ${e}`);
+      if (e instanceof ConnectTimeoutError) {
+        // Stop the attempt in the background; the user can pick another server.
+        this.connectAttempt++;
+        this.wantsDisconnected = true;
+        server.disconnect().catch(() => {});
+        this.rootEl.showToast(
+          this.localize('proclient-server-not-responding'),
+          5000
+        );
+        return;
+      }
       if (
         e instanceof errors.ProxyConnectionFailure &&
         e.cause instanceof errors.SystemConfigurationException
@@ -683,6 +723,21 @@ export class App {
         }
       }
       this.showLocalizedError(e);
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  private markOthersDisconnected(serverId: string) {
+    for (const other of this.rootEl.servers as ServerListItem[]) {
+      if (
+        other.id !== serverId &&
+        other.connectionState !== ServerConnectionState.DISCONNECTED
+      ) {
+        this.updateServerListItem(other.id, {
+          connectionState: ServerConnectionState.DISCONNECTED,
+        });
+      }
     }
   }
 
@@ -745,6 +800,21 @@ export class App {
 
     const server = this.getServerByServerId(serverId);
     console.log(`disconnecting from server ${serverId}`);
+
+    // Fork: pressing the button while a server is still connecting cancels it
+    // at once, instead of waiting for a server that may never answer.
+    const card = (this.rootEl.servers as ServerListItem[]).find(
+      s => s.id === serverId
+    );
+    this.connectAttempt++;
+    this.wantsDisconnected = true;
+    if (card?.connectionState === ServerConnectionState.CONNECTING) {
+      this.updateServerListItem(serverId, {
+        connectionState: ServerConnectionState.DISCONNECTED,
+      });
+      server.disconnect().catch(() => {});
+      return;
+    }
 
     this.updateServerListItem(serverId, {
       connectionState: ServerConnectionState.DISCONNECTING,

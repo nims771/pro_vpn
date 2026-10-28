@@ -5,8 +5,10 @@
   "appGroup": "group.com.proclient.ios",
   "primaryColor": "#16A34A",
   "headerColor": "#166534",
-  "backgroundColor": "#06140C",
+  "backgroundColor": "#FFFFFF",
   "icon": "",
+  "iconArt": "logo.png",
+  "iconBackground": "#FFFFFF",
   "appleTeamId": "",
   "supportUrl": "",
   "getKeyUrl": ""

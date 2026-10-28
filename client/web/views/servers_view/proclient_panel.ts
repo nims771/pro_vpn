@@ -154,7 +154,7 @@ export class ProclientPanel extends LitElement {
       align-items: center;
       display: grid;
       gap: 8px;
-      grid-template-columns: 1fr 1fr auto;
+      grid-template-columns: 1fr 1fr;
       padding: 12px 16px;
     }
 
@@ -373,11 +373,6 @@ export class ProclientPanel extends LitElement {
         <div class="speed-item">
           <span class="speed-arrow up"><md-icon>arrow_upward</md-icon></span>
           <span class="speed-value">${formatSpeed(t.upBps, this.locale)}</span>
-        </div>
-        <div class="speed-session">
-          ${this.localize('proclient-session')}<br />
-          ↓ <b>${formatBytes(t.sessionDown, this.locale)}</b> · ↑
-          <b>${formatBytes(t.sessionUp, this.locale)}</b>
         </div>
       </div>
     `;

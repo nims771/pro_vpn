@@ -17,6 +17,9 @@ import * as errors from '../../model/errors';
 
 export const FAKE_BROKEN_HOSTNAME = '192.0.2.1';
 export const FAKE_UNREACHABLE_HOSTNAME = '10.0.0.24';
+// Fork: a server that never answers (TEST-NET-3), to exercise switching away
+// from a dead server in the browser preview.
+export const FAKE_HANGING_HOSTNAME = '203.0.113.';
 
 // Fake VPN API implementation for demoing and testing.
 // Note that because this implementation does not emit disconnection events, "switching" between
@@ -40,6 +43,10 @@ export class FakeVpnApi implements VpnApi {
     }
 
     const address = request.firstHop;
+    if (address?.startsWith(FAKE_HANGING_HOSTNAME)) {
+      await new Promise(resolve => setTimeout(resolve, 40_000));
+      throw new errors.OutlinePluginError(errors.ErrorCode.SERVER_UNREACHABLE);
+    }
     if (this.playUnreachable(address)) {
       throw new errors.OutlinePluginError(errors.ErrorCode.SERVER_UNREACHABLE);
     } else if (this.playBroken(address)) {

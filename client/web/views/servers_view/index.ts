@@ -28,6 +28,8 @@ import './server_list';
 import './proclient_panel';
 import './server_list_item/proclient_ui';
 import {ServerListItem as _ServerListItem} from './server_list_item';
+import {pingServers} from '../../app/subscriptions/ping';
+import {proclientStore} from '../../app/subscriptions/store';
 
 export type ServerListItem = _ServerListItem;
 
@@ -122,15 +124,72 @@ export class ServerList extends LitElement {
       .connect-bar {
         background: linear-gradient(
           to top,
-          var(--outline-background) 75%,
+          var(--outline-background) 70%,
           transparent
         );
         bottom: 0;
         box-sizing: border-box;
+        display: flex;
+        justify-content: center;
         margin-top: auto;
-        padding: 16px 12px max(14px, env(safe-area-inset-bottom));
+        padding: 18px 16px max(28px, calc(env(safe-area-inset-bottom) + 16px));
         position: sticky;
         z-index: 2;
+      }
+
+      .connect-bar connect-button {
+        max-width: 280px;
+        width: 76%;
+      }
+
+      /* Fork: "Servers · 3" + ping button above the list. */
+      .list-toolbar {
+        align-items: center;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 12px 2px 16px;
+      }
+
+      .list-title {
+        color: var(--outline-label-color);
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .ping-button {
+        align-items: center;
+        background: rgba(var(--outline-primary-rgb), 0.1);
+        border-radius: 99px;
+        color: var(--outline-primary);
+        cursor: pointer;
+        display: inline-flex;
+        flex-direction: row;
+        font-size: 0.8rem;
+        font-weight: 600;
+        gap: 4px;
+        padding: 5px 12px 5px 8px;
+      }
+
+      .ping-button md-icon {
+        --md-icon-size: 18px;
+        font-size: 18px;
+      }
+
+      .ping-button[disabled] {
+        opacity: 0.6;
+      }
+
+      .ping-button[disabled] md-icon {
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     `,
   ];
@@ -145,14 +204,40 @@ export class ServerList extends LitElement {
     ServerConnectionState.DISCONNECTING,
   ];
 
+  private unsubscribeStore?: () => void;
+  private lastPingedIds = '';
+  private pingTimer?: number;
+
   connectedCallback() {
     super.connectedCallback();
     this.addEventListener('ProclientSelectServer', this.onSelectServer);
+    this.unsubscribeStore = proclientStore.subscribe(() =>
+      this.requestUpdate()
+    );
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.removeEventListener('ProclientSelectServer', this.onSelectServer);
+    this.unsubscribeStore?.();
+  }
+
+  // Ping automatically whenever the set of servers changes (app start,
+  // subscription added or refreshed).
+  updated() {
+    const ids = (this.servers ?? []).map(s => s.id).join(',');
+    if (ids && ids !== this.lastPingedIds) {
+      this.lastPingedIds = ids;
+      window.clearTimeout(this.pingTimer);
+      this.pingTimer = window.setTimeout(() => this.runPing(), 800);
+    }
+  }
+
+  private runPing() {
+    if (proclientStore.pinging) return;
+    void pingServers(
+      (this.servers ?? []).map(s => ({id: s.id, address: s.address}))
+    );
   }
 
   /** The server that is connected (or connecting), if any. */
@@ -179,11 +264,12 @@ export class ServerList extends LitElement {
 
     // Already connected to another server: switch to the chosen one.
     const active = this.activeServer;
+    // Connected, still connecting or reconnecting to another server (for
+    // example one that doesn't answer): switch to the chosen one right away.
     if (
       active &&
       active.id !== serverId &&
-      (active.connectionState === ServerConnectionState.CONNECTED ||
-        active.connectionState === ServerConnectionState.RECONNECTING)
+      active.connectionState !== ServerConnectionState.DISCONNECTING
     ) {
       this.fireServerEvent('ConnectPressed', serverId);
     }
@@ -308,11 +394,27 @@ export class ServerList extends LitElement {
           .servers=${this.servers}
           .localize=${this.localize}
         ></proclient-panel>
+        <div class="list-toolbar">
+          <span class="list-title"
+            >${this.localize('proclient-servers-title')} ·
+            ${this.servers.length}</span
+          >
+          <button
+            class="ping-button"
+            ?disabled=${proclientStore.pinging}
+            @click=${() => this.runPing()}
+          >
+            <md-icon>${proclientStore.pinging ? 'autorenew' : 'speed'}</md-icon>
+            ${this.localize('proclient-ping-button')}
+          </button>
+        </div>
         <server-list
           ?darkMode=${this.darkMode}
           .servers=${this.servers}
           .localize=${this.localize}
           .selectedId=${this.targetServer?.id ?? ''}
+          .pings=${proclientStore.pings}
+          ?pinging=${proclientStore.pinging}
         ></server-list>
         ${this.renderConnectBar()}
       `;

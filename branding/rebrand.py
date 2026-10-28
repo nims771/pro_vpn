@@ -324,6 +324,9 @@ def apply_images(cfg: dict, generate_platform_assets: bool) -> None:
     custom = (BRANDING / cfg["icon"]) if cfg.get("icon") else None
     if custom and not custom.exists():
         fail(f"icon: файл {custom} не найден")
+    art = (BRANDING / cfg["iconArt"]) if cfg.get("iconArt") else None
+    if art and not art.exists():
+        fail(f"iconArt: файл {art} не найден")
     written = brand_images.write_all(
         name=cfg["name"],
         primary=cfg["primaryColor"],
@@ -331,6 +334,8 @@ def apply_images(cfg: dict, generate_platform_assets: bool) -> None:
         custom_icon=custom,
         cap_assets=CAP / "assets",
         web_assets=WEB / "assets",
+        icon_art=art,
+        icon_background=cfg.get("iconBackground"),
     )
     changed_files.extend(str(p.relative_to(ROOT)) for p in written)
 
