@@ -27,6 +27,7 @@ import './server_connection_indicator';
 import './server_list';
 import './proclient_panel';
 import './server_list_item/proclient_ui';
+import './vpn_home';
 import {ServerListItem as _ServerListItem} from './server_list_item';
 import {whenIntroDone} from '../../app/intro';
 import {getSettings} from '../../app/proclient_settings';
@@ -398,6 +399,14 @@ export class ServerList extends LitElement {
       this.autoTestedFor = '';
     }
 
+    // Live speed counters run while a tunnel is up.
+    proclientStore.setVpnActive(
+      (this.servers ?? []).some(
+        s =>
+          s.connectionState === ServerConnectionState.CONNECTED ||
+          s.connectionState === ServerConnectionState.RECONNECTING
+      )
+    );
     this.advanceChain();
     this.updateHealthMonitor();
     this.checkFailover();
@@ -695,6 +704,7 @@ export class ServerList extends LitElement {
     this.chosenServerId = serverId;
     writeChosenServer(serverId);
     this.chain = undefined;
+    this.backToVpnSoon();
     if (serverId.startsWith(ServerList.AUTO)) return;
 
     // Already connected to another server: switch to the chosen one.
@@ -946,6 +956,7 @@ export class ServerList extends LitElement {
     this.chosenServerId = id;
     writeChosenServer(id);
     this.chain = undefined;
+    this.backToVpnSoon();
     // Connected through another subscription: move to this one's best.
     if (
       active &&
@@ -954,6 +965,12 @@ export class ServerList extends LitElement {
     ) {
       void this.startChain([], groupId);
     }
+  }
+
+  /** After picking a server in "Profiles", show it on the "VPN" tab. */
+  private backToVpnSoon() {
+    if (this.tab !== 'profiles') return;
+    window.setTimeout(() => this.requestTab('vpn'), 260);
   }
 
   private pingGroup(groupId: string) {
@@ -966,27 +983,69 @@ export class ServerList extends LitElement {
     );
   }
 
-  private renderConnectBar() {
+  /** Fork: the "VPN" tab (big power button, server, account, speed). */
+  private renderVpnHome() {
     const target = this.targetServer;
-    if (!target) return '';
-    const [primary, secondary] = this.statusTexts(target);
-    return html`
-      <div class="connect-bar">
-        <connect-bar
-          connection-state=${target.connectionState}
-          server-id=${target.id}
-          primary=${primary}
-          secondary=${secondary}
-          ?testing=${(this.test?.running ?? false) || this.searching}
-          ?disabled=${!this.activeServer && Boolean(target.errorMessageId)}
-          @connect-toggle=${this.onConnectButton}
-          @status-tap=${() => {
-            void this.runTest();
-          }}
-        ></connect-bar>
-      </div>
-    `;
+    const groupId = target ? this.groupOf(target) : undefined;
+    const subscription =
+      groupId && groupId !== MANUAL_GROUP
+        ? proclientStore.subscriptions.find(s => s.id === groupId)
+        : undefined;
+    const details = target
+      ? [
+          target.protocol || 'Shadowsocks',
+          subscription?.title || this.localize('proclient-my-servers'),
+        ].join(' · ')
+      : '';
+    return html`<vpn-home
+      .localize=${this.localize}
+      .server=${target}
+      location=${target ? this.statusTexts(target)[1] : ''}
+      details=${details}
+      note=${target ? this.noteText(target) : ''}
+      ?busy=${(this.test?.running ?? false) ||
+      this.searching ||
+      this.recovering}
+      ?disabled=${!target ||
+      (!this.activeServer && Boolean(target.errorMessageId))}
+      .subscription=${subscription}
+      .traffic=${proclientStore.traffic}
+      @power-toggle=${this.onConnectButton}
+      @open-profiles=${() => this.requestTab('profiles')}
+      @status-tap=${() => {
+        void this.runTest();
+      }}
+    ></vpn-home>`;
   }
+
+  /** The hint / test result under the timer (not the state, shown above). */
+  private noteText(target: ServerListItem): string {
+    const state = target.connectionState;
+    if (
+      !this.searching &&
+      !this.recovering &&
+      (state === ServerConnectionState.CONNECTING ||
+        state === ServerConnectionState.DISCONNECTING ||
+        state === ServerConnectionState.RECONNECTING)
+    ) {
+      return '';
+    }
+    return this.statusTexts(target)[0];
+  }
+
+  /** Asks app-root to show the "VPN" or "Profiles" tab. */
+  private requestTab(tab: 'vpn' | 'profiles') {
+    this.dispatchEvent(
+      new CustomEvent('ProclientHomeTab', {
+        detail: {tab},
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  /** Fork: which tab of the home page is shown ("vpn" or "profiles"). */
+  @property({type: String}) tab = 'vpn';
 
   @property({type: Object}) localize: Localizer = msg => msg;
   @property({type: Boolean}) shouldShowAccessKeyWikiLink = false;
@@ -1045,14 +1104,9 @@ export class ServerList extends LitElement {
         </section>
       `;
     } else {
-      return html`
-        <proclient-panel
-          .servers=${this.servers}
-          .localize=${this.localize}
-        ></proclient-panel>
-        <div class="groups">${this.renderGroups()}</div>
-        ${this.renderConnectBar()}
-      `;
+      return this.tab === 'profiles'
+        ? html`<div class="groups">${this.renderGroups()}</div>`
+        : this.renderVpnHome();
     }
   }
 }

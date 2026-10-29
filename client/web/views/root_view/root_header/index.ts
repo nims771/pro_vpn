@@ -25,7 +25,8 @@ export class RootHeader extends LitElement {
     header {
       align-items: center;
       justify-content: space-between;
-      background-color: var(--outline-dark-primary);
+      /* Fork: in the dark theme the header blends into the page. */
+      background-color: var(--proclient-header-bg, var(--outline-dark-primary));
       display: flex;
       min-height: 64px;
       /* Where the WebView extends under the status bar (iOS with

@@ -58,6 +58,7 @@ import '../views/servers_view';
 import '../views/root_view/add_access_key_dialog';
 // eslint-disable-next-line n/no-missing-import
 import '../views/root_view/root_header';
+import '../views/root_view/bottom_tabs';
 // eslint-disable-next-line n/no-missing-import
 import '../views/root_view/root_navigation';
 // eslint-disable-next-line n/no-missing-import
@@ -362,6 +363,7 @@ export class AppRoot extends mixinBehaviors(
             servers="[[servers]]"
             localize="[[localize]]"
             should-show-access-key-wiki-link="[[useAltAccessMessage]]"
+            tab="[[homeTab]]"
             on-add-server="promptAddServer"
           ></servers-view>
           <contact-view
@@ -404,11 +406,20 @@ export class AppRoot extends mixinBehaviors(
           <settings-view
             name="settings"
             id="settingsView"
+            selected-appearance="[[selectedAppearance]]"
             localize="[[localize]]"
             version="[[appVersion]]"
             build="[[appBuild]]"
           ></settings-view>
         </iron-pages>
+
+        <!-- Fork: VPN / Profiles / Settings -->
+        <bottom-tabs
+          localize="[[localize]]"
+          active="[[_activeTab(page, homeTab)]]"
+          hidden$="[[!_showTabs(page)]]"
+          on-tab-select="_onTabSelect"
+        ></bottom-tabs>
       </div>
 
       <root-navigation
@@ -646,12 +657,45 @@ export class AppRoot extends mixinBehaviors(
         type: Boolean,
         value: false,
       },
+      // Fork: which tab of the home page is shown ("vpn" or "profiles").
+      homeTab: {
+        type: String,
+        value: 'vpn',
+      },
     };
+  }
+
+  // ---- Fork: bottom tabs ----
+
+  _showTabs(page) {
+    return page === 'home' || page === 'settings';
+  }
+
+  _activeTab(page, homeTab) {
+    return page === 'settings' ? 'settings' : homeTab;
+  }
+
+  _onTabSelect(event) {
+    const tab = event.detail.tab;
+    if (tab === 'settings') {
+      this.changePage('settings');
+      return;
+    }
+    this.homeTab = tab;
+    this.changePage('home');
+  }
+
+  _onHomeTabRequest(event) {
+    this.homeTab = event.detail.tab;
   }
 
   ready() {
     super.ready();
     this.setLanguage(this.language);
+    // Fork: servers-view asks to switch between "VPN" and "Profiles".
+    this.addEventListener('ProclientHomeTab', event =>
+      this._onHomeTabRequest(event)
+    );
 
     // Workaround for paper-behaviors' craptastic keyboard focus detection:
     // https://github.com/PolymerElements/paper-behaviors/issues/80
@@ -853,7 +897,8 @@ export class AppRoot extends mixinBehaviors(
   }
 
   _computeShouldShowBackButton(page, DEFAULT_PAGE) {
-    return page !== DEFAULT_PAGE;
+    // Fork: Settings is a tab, not a sub-page.
+    return page !== DEFAULT_PAGE && page !== 'settings';
   }
 
   _computeShouldShowAddButton(page) {

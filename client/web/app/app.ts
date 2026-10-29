@@ -247,7 +247,9 @@ export class App {
     if (this.appearanceFeatureEnabled) {
       this.rootEl.showAppearanceView = true;
       this.setAppearance(
-        this.settings.get(SettingsKey.APPEARANCE) as Appearance
+        // Fork: dark by default (can be changed in Settings).
+        (this.settings.get(SettingsKey.APPEARANCE) as Appearance) ||
+          Appearance.DARK
       );
       this.rootEl.addEventListener(
         'SetAppearanceRequested',

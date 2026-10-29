@@ -48,12 +48,15 @@ export class SettingsView extends LitElement {
   @property({type: Object}) localize: Localizer = msg => msg;
   @property({type: String}) version = '';
   @property({type: String}) build = '';
+  /** Light / dark / system, kept by app-root. */
+  @property({attribute: 'selected-appearance'}) selectedAppearance = '';
 
   @state() private settings: ProclientSettings = getSettings();
   @state() private info?: DeviceInfo;
   @state() private copied = false;
   @state() private accent: Accent = getAccent();
-  @state() private appearance = currentAppearance();
+  /** Set once the user picks a theme here; until then, app-root's value. */
+  @state() private appearance?: string;
   private copiedTimer?: number;
   private unsubscribe?: () => void;
   private unsubscribeAccent?: () => void;
@@ -344,7 +347,6 @@ export class SettingsView extends LitElement {
     super.connectedCallback();
     this.unsubscribe = onSettingsChange(s => (this.settings = s));
     this.unsubscribeAccent = onAccentChange(a => (this.accent = a));
-    this.appearance = currentAppearance();
     getDeviceInfo().then(
       info => (this.info = info),
       e => console.warn(`device info failed: ${e}`)
@@ -476,7 +478,8 @@ export class SettingsView extends LitElement {
               mode =>
                 html`<option
                   value=${mode}
-                  ?selected=${mode === this.appearance}
+                  ?selected=${mode ===
+                  (this.appearance ?? (this.selectedAppearance || 'system'))}
                 >
                   ${this.localize(`proclient-theme-${mode}`)}
                 </option>`
@@ -598,12 +601,4 @@ export class SettingsView extends LitElement {
     window.clearTimeout(this.copiedTimer);
     this.copiedTimer = window.setTimeout(() => (this.copied = false), 1800);
   }
-}
-
-/** Light / dark / system, as last chosen (kept by app-root). */
-function currentAppearance(): string {
-  const root = document.querySelector('app-root') as {
-    selectedAppearance?: string;
-  } | null;
-  return root?.selectedAppearance || 'system';
 }
