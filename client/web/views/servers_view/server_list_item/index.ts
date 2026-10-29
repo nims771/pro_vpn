@@ -45,6 +45,8 @@ export interface ServerListItem {
   connectionType?: ServerConnectionType;
   /** Fork: the panel subscription this server came from, if any. */
   subscriptionId?: string;
+  /** Fork: protocol label ("VLESS", "Hysteria2"...); none for Shadowsocks. */
+  protocol?: string;
 }
 
 /**

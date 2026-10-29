@@ -24,7 +24,7 @@ import {SubscriptionManager} from './subscriptions/manager';
 import {Updater} from './updater';
 import {UrlInterceptor} from './url_interceptor';
 import {VpnInstaller} from './vpn_installer';
-import {isXrayLink} from './xray_links';
+import {isXrayLink, protocolLabel} from './xray_links';
 import * as errors from '../model/errors';
 import * as events from '../model/events';
 import {Server, ServerRepository} from '../model/server';
@@ -85,6 +85,12 @@ export function isOutlineAccessKey(url: string): boolean {
 }
 
 const DEFAULT_SERVER_CONNECTION_STATUS_CHANGE_TIMEOUT = 600;
+
+/** Fork: protocol badge for a server card; plain Shadowsocks gets none. */
+function serverProtocol(accessKey?: string): string | undefined {
+  if (!accessKey || !isXrayLink(accessKey)) return undefined;
+  return protocolLabel(accessKey) || undefined;
+}
 
 /** Fork: the server didn't answer in time. */
 class ConnectTimeoutError extends Error {
@@ -1063,6 +1069,7 @@ export class App {
       id: server.id,
       connectionState: ServerConnectionState.DISCONNECTED,
       subscriptionId: this.serverRepo.getSubscriptionId?.(server.id),
+      protocol: serverProtocol(this.serverRepo.getAccessKey?.(server.id)),
     };
   }
 

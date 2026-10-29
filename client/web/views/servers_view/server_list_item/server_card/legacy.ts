@@ -183,6 +183,19 @@ const sharedCSS = css`
     background: var(--outline-warning, #f9c800);
   }
 
+  /* Fork: protocol of the server (VLESS, Trojan, Hysteria2...). */
+  .card-protocol {
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    margin-left: 2px;
+    opacity: 0.75;
+    padding: 2px 4px;
+  }
+
   .card-status connection-timer {
     color: var(--outline-text-color);
     font-family: var(--outline-font-family);
@@ -294,6 +307,9 @@ const getSharedComponents = (element: ServerListItemElement & LitElement) => {
             server-id=${server.id}
             connection-state=${server.connectionState}
           ></connection-timer>
+          ${server.protocol && !isUp
+            ? html`<span class="card-protocol">${server.protocol}</span>`
+            : ''}
         </div>
       `,
       powerButton: (size: 'large' | 'small') => html`

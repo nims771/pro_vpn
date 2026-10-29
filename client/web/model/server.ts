@@ -56,6 +56,7 @@ export interface ServerRepository {
 
   // Fork: panel subscriptions. Optional so test doubles needn't implement them.
   getSubscriptionId?(serverId: string): string | undefined;
+  getAccessKey?(serverId: string): string | undefined;
   syncSubscription?(
     subscriptionId: string,
     entries: Array<{accessKey: string; name: string}>

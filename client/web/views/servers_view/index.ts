@@ -483,7 +483,7 @@ export class ServerList extends LitElement {
     this.searching = true;
     const pool = groupId ? this.serversIn(groupId) : (this.servers ?? []);
     try {
-      await pingServers(pool.map(s => ({id: s.id, address: s.address})));
+      await pingServers(pingTargets(pool));
     } finally {
       this.searching = false;
     }
@@ -663,9 +663,7 @@ export class ServerList extends LitElement {
 
   private runPing() {
     if (proclientStore.pinging) return;
-    void pingServers(
-      (this.servers ?? []).map(s => ({id: s.id, address: s.address}))
-    );
+    void pingServers(pingTargets(this.servers ?? []));
   }
 
   /** The server that is connected (or connecting), if any. */
@@ -745,7 +743,9 @@ export class ServerList extends LitElement {
   private onPingServer = (event: Event) => {
     const serverId = (event as CustomEvent).detail?.serverId;
     const server = this.servers?.find(s => s.id === serverId);
-    if (server) void pingServer({id: server.id, address: server.address});
+    if (server && isPingable(server)) {
+      void pingServer({id: server.id, address: server.address});
+    }
   };
 
   /**
@@ -957,9 +957,7 @@ export class ServerList extends LitElement {
   }
 
   private pingGroup(groupId: string) {
-    void pingServers(
-      this.serversIn(groupId).map(s => ({id: s.id, address: s.address}))
-    );
+    void pingServers(pingTargets(this.serversIn(groupId)));
   }
 
   private isGroupPinging(groupId: string): boolean {
@@ -1096,6 +1094,18 @@ function writeChosenServer(serverId: string) {
   } catch {
     // ignore
   }
+}
+
+/**
+ * Fork: the ping is a TCP connect, which UDP-only protocols (Hysteria2,
+ * WireGuard) don't answer: leave them unmeasured rather than "unreachable".
+ */
+function isPingable(server: ServerListItem): boolean {
+  return server.protocol !== 'Hysteria2' && server.protocol !== 'WireGuard';
+}
+
+function pingTargets(servers: ServerListItem[]) {
+  return servers.filter(isPingable).map(s => ({id: s.id, address: s.address}));
 }
 
 /** Servers whose name has no country flag get a globe instead. */

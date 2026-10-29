@@ -272,6 +272,10 @@ class OutlineServerRepository implements ServerRepository {
     return this.serverById.get(serverId)?.subscriptionId;
   }
 
+  getAccessKey(serverId: string): string | undefined {
+    return this.serverById.get(serverId)?.accessKey;
+  }
+
   /**
    * Makes the servers of `subscriptionId` match `entries`: adds new keys,
    * renames existing ones and removes keys the panel no longer lists (except a
