@@ -33,12 +33,15 @@ jobs:
         env:
           GOTOOLCHAIN: local
         run: |
-          go get ${{ github.event.inputs.modules }}
-          go mod tidy
-          go vet ./client/go/outline/xraytransport/ ./client/go/outline/configregistry/
-          GOOS=windows GOARCH=386 go vet ./client/go/outline/xraytransport/
-          GOOS=android GOARCH=arm64 go vet ./client/go/outline/xraytransport/
-          git diff --stat
+          set -o pipefail
+          {
+            go get ${{ github.event.inputs.modules }} &&
+            go mod tidy &&
+            go vet ./client/go/outline/xraytransport/ ./client/go/outline/configregistry/ &&
+            GOOS=windows GOARCH=386 go vet ./client/go/outline/xraytransport/ &&
+            GOOS=android GOARCH=arm64 go vet ./client/go/outline/xraytransport/ &&
+            git diff --stat
+          } 2>&1 | grep -v "go: downloading" | tee /tmp/deps.log
 
       - name: Commit
         run: |
@@ -47,3 +50,17 @@ jobs:
           git add go.mod go.sum
           git commit -m "Update Go dependencies: ${{ github.event.inputs.modules }}" || echo "nothing to commit"
           git push
+
+      # Логи Actions не всегда можно скачать: кладём ошибку в ветку ci-logs.
+      - name: Save log on failure
+        if: failure()
+        run: |
+          cp /tmp/deps.log /tmp/keep.log || echo "no log" > /tmp/keep.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan ci-logs-tmp
+          git rm -rf --cached . > /dev/null
+          cp /tmp/keep.log deps.log
+          git add deps.log
+          git commit -m "deps log ${{ github.run_id }}"
+          git push -f origin HEAD:ci-logs
