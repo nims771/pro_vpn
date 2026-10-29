@@ -1,6 +1,6 @@
 {
     "appId": "com.proclient.ios",
-    "appName": "ProVPN",
+    "appName": "Protected VPN",
     "webDir": "www",
     "bundledWebRuntime": false,
     "server": {

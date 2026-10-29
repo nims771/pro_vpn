@@ -230,6 +230,63 @@ export class ServerList extends LitElement {
         z-index: 2;
       }
 
+      /* Fork: a subscription (header + its servers), kept apart from others. */
+      .group {
+        background: rgba(var(--outline-primary-rgb), 0.06);
+        border: 1px solid rgba(var(--outline-primary-rgb), 0.16);
+        border-radius: 18px;
+        display: block;
+        flex: none;
+        margin: 4px 8px 10px;
+        padding: 6px;
+      }
+
+      .group proclient-subscription {
+        display: block;
+      }
+
+      server-list.in-group {
+        padding: 6px 0 0;
+      }
+
+      .group.manual {
+        background: transparent;
+        border-color: var(--outline-hairline, rgba(0, 0, 0, 0.1));
+      }
+
+      .group-label {
+        align-items: center;
+        color: var(--outline-label-color);
+        display: flex;
+        flex-direction: row;
+        font-family: var(--outline-font-family);
+        font-size: 0.8rem;
+        font-weight: 600;
+        gap: 8px;
+        letter-spacing: 0.03em;
+        padding: 4px 6px;
+        text-transform: uppercase;
+        width: 100%;
+      }
+
+      .group-label span {
+        flex: 1;
+        text-align: left;
+      }
+
+      .group-label md-icon {
+        --md-icon-size: 18px;
+        font-size: 18px;
+      }
+
+      .group-label .chevron {
+        transition: transform 0.25s ease;
+      }
+
+      .group-label .chevron.closed {
+        transform: rotate(-90deg);
+      }
+
       /* Fork: "Servers · 3" + ping button above the list. */
       .list-toolbar {
         align-items: center;
@@ -313,6 +370,10 @@ export class ServerList extends LitElement {
   @state() private searching = false;
   private reconnectingSince = new Map<string, number>();
   private static readonly FAILOVER_AFTER_MS = 20_000;
+  // Fork: at most one "ask the panel for a new address" per server per minute.
+  private static readonly RECOVERY_INTERVAL_MS = 60_000;
+  private lastRecoveryAt = new Map<string, number>();
+  @state() private recovering = false;
   private launchHandled = false;
 
   private unsubscribeStore?: () => void;
@@ -330,6 +391,8 @@ export class ServerList extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.clearTimeout(this.healthTimer);
+    this.healthFor = '';
     this.removeEventListener('ProclientSelectServer', this.onSelectServer);
     this.removeEventListener('ProclientPingServer', this.onPingServer);
     this.unsubscribeStore?.();
@@ -352,6 +415,7 @@ export class ServerList extends LitElement {
     }
 
     this.advanceChain();
+    this.updateHealthMonitor();
     this.checkFailover();
     this.maybeConnectOnLaunch();
 
@@ -442,7 +506,11 @@ export class ServerList extends LitElement {
     }
   }
 
-  /** Switch away from a server that has been "reconnecting" for too long. */
+  /**
+   * A server that has been "reconnecting" for too long (Android) or stopped
+   * answering (health check elsewhere): first ask its panel whether it moved
+   * to a new address (outside the VPN), then switch to the next best server.
+   */
   private checkFailover() {
     const now = Date.now();
     for (const s of this.servers ?? []) {
@@ -458,20 +526,104 @@ export class ServerList extends LitElement {
       }
     }
     const active = this.activeServer;
-    if (
-      !getSettings().failover ||
-      this.chain ||
-      this.searching ||
-      active?.connectionState !== ServerConnectionState.RECONNECTING ||
-      (this.servers?.length ?? 0) < 2
-    ) {
+    if (!active || this.chain || this.searching || this.recovering) return;
+    const since = this.reconnectingSince.get(active.id);
+    const stuck =
+      active.connectionState === ServerConnectionState.RECONNECTING &&
+      since !== undefined &&
+      now - since >= ServerList.FAILOVER_AFTER_MS;
+    const dead =
+      this.unhealthyId === active.id &&
+      active.connectionState === ServerConnectionState.CONNECTED;
+    if (!stuck && !dead) return;
+    const last = this.lastRecoveryAt.get(active.id) ?? 0;
+    if (now - last < ServerList.RECOVERY_INTERVAL_MS) return;
+    this.lastRecoveryAt.set(active.id, now);
+    this.reconnectingSince.delete(active.id);
+    this.unhealthyId = undefined;
+    void this.recoverOrFailover(active.id);
+  }
+
+  private async recoverOrFailover(serverId: string) {
+    this.recovering = true;
+    let replacement: string | undefined;
+    try {
+      replacement = await new Promise<string | undefined>(resolve => {
+        this.dispatchEvent(
+          new CustomEvent('ProclientRecoverServer', {
+            detail: {serverId, done: resolve},
+            bubbles: true,
+            composed: true,
+          })
+        );
+        // Nobody listening (tests, previews): carry on.
+        window.setTimeout(() => resolve(undefined), 45_000);
+      });
+    } finally {
+      this.recovering = false;
+    }
+    if (replacement) {
+      if (this.chosenServerId === serverId) {
+        this.chosenServerId = replacement;
+        writeChosenServer(replacement);
+      }
       return;
     }
-    const since = this.reconnectingSince.get(active.id) ?? now;
-    if (now - since >= ServerList.FAILOVER_AFTER_MS) {
-      this.reconnectingSince.delete(active.id);
-      void this.startChain([active.id]);
+    const active = this.activeServer;
+    if (
+      getSettings().failover &&
+      active?.id === serverId &&
+      (this.servers?.length ?? 0) >= 2
+    ) {
+      void this.startChain([serverId]);
     }
+  }
+
+  // ---- Health check (platforms without a native watchdog, e.g. Windows) ----
+
+  private static readonly HEALTH_INTERVAL_MS = 20_000;
+  private static readonly HEALTH_RECHECK_MS = 5_000;
+  private healthFor = '';
+  private healthTimer?: number;
+  private unhealthyId?: string;
+
+  private updateHealthMonitor() {
+    const active = this.activeServer;
+    const watch =
+      !proclientStore.nativeWatchdog &&
+      proclientStore.canMeasureLatency &&
+      active?.connectionState === ServerConnectionState.CONNECTED
+        ? active.id
+        : '';
+    if (watch === this.healthFor) return;
+    window.clearTimeout(this.healthTimer);
+    this.healthTimer = undefined;
+    this.healthFor = watch;
+    this.unhealthyId = undefined;
+    if (watch) this.scheduleHealthCheck(ServerList.HEALTH_INTERVAL_MS, 0);
+  }
+
+  private scheduleHealthCheck(delay: number, failures: number) {
+    window.clearTimeout(this.healthTimer);
+    this.healthTimer = window.setTimeout(async () => {
+      const id = this.healthFor;
+      if (!id) return;
+      const ms = await proclientStore.measureLatency();
+      if (id !== this.healthFor) return;
+      if (ms === undefined || ms >= 0) {
+        this.scheduleHealthCheck(ServerList.HEALTH_INTERVAL_MS, 0);
+        return;
+      }
+      if (failures + 1 < 2) {
+        this.scheduleHealthCheck(ServerList.HEALTH_RECHECK_MS, failures + 1);
+        return;
+      }
+      console.warn(`server ${id} stopped answering`);
+      this.unhealthyId = id;
+      this.requestUpdate();
+      // Keep watching: if it comes back, nothing else happens.
+      this.scheduleHealthCheck(ServerList.HEALTH_INTERVAL_MS, 0);
+    }, delay);
   }
 
   /** "Connect on launch" setting: once, after the app has settled. */
@@ -596,6 +748,9 @@ export class ServerList extends LitElement {
     if (this.searching) {
       return [this.localize('proclient-auto-searching'), name];
     }
+    if (this.recovering) {
+      return [this.localize('proclient-recovering'), name];
+    }
     const test = this.test?.serverId === target.id ? this.test : undefined;
     const up =
       state === ServerConnectionState.CONNECTED ||
@@ -660,6 +815,90 @@ export class ServerList extends LitElement {
         <div class="auto-sub">${sub}</div>
       </div>
     </div>`;
+  }
+
+  private renderServerList(servers: ServerListItem[], inGroup: boolean) {
+    return html`<server-list
+      class=${inGroup ? 'in-group' : ''}
+      ?darkMode=${this.darkMode}
+      .servers=${servers}
+      .localize=${this.localize}
+      .selectedId=${this.isAuto ? '' : (this.targetServer?.id ?? '')}
+      .pings=${proclientStore.pings}
+      ?pinging=${proclientStore.pinging}
+      .pingingIds=${new Set(proclientStore.pingingIds)}
+    ></server-list>`;
+  }
+
+  /**
+   * Fork: one block per subscription (newest first) with its quota and its
+   * servers, which can be collapsed; servers added by hand come last.
+   */
+  private renderGroups() {
+    const servers = this.servers ?? [];
+    const subs = proclientStore.subscriptions;
+    if (!subs.length) return this.renderServerList(servers, false);
+
+    const known = new Set(subs.map(s => s.id));
+    const manual = servers.filter(
+      s => !s.subscriptionId || !known.has(s.subscriptionId)
+    );
+    const active = this.activeServer;
+    return html`
+      ${subs.map(sub => {
+        const members = servers.filter(s => s.subscriptionId === sub.id);
+        const collapsed = this.collapsedGroups.has(sub.id);
+        const activeHere = active && members.some(m => m.id === active.id);
+        return html`<section class="group">
+          <proclient-subscription
+            .localize=${this.localize}
+            .subscription=${sub}
+            ?collapsed=${collapsed}
+            .activeName=${activeHere ? withFlag(active!.name) : ''}
+            @toggle-collapse=${() => this.toggleGroup(sub.id)}
+          ></proclient-subscription>
+          ${collapsed || !members.length
+            ? ''
+            : this.renderServerList(members, true)}
+        </section>`;
+      })}
+      ${manual.length
+        ? html`<section class="group manual">
+            <button
+              class="group-label"
+              aria-expanded=${this.collapsedGroups.has(MANUAL_GROUP)
+                ? 'false'
+                : 'true'}
+              @click=${() => this.toggleGroup(MANUAL_GROUP)}
+            >
+              <md-icon>dns</md-icon>
+              <span
+                >${this.localize('proclient-my-servers')} ·
+                ${manual.length}</span
+              >
+              <md-icon
+                class="chevron ${this.collapsedGroups.has(MANUAL_GROUP)
+                  ? 'closed'
+                  : ''}"
+                >expand_more</md-icon
+              >
+            </button>
+            ${this.collapsedGroups.has(MANUAL_GROUP)
+              ? ''
+              : this.renderServerList(manual, true)}
+          </section>`
+        : ''}
+    `;
+  }
+
+  @state() private collapsedGroups = readCollapsedGroups();
+
+  private toggleGroup(id: string) {
+    const next = new Set(this.collapsedGroups);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this.collapsedGroups = next;
+    writeCollapsedGroups(next);
   }
 
   private selectAuto() {
@@ -766,19 +1005,30 @@ export class ServerList extends LitElement {
             ${this.localize('proclient-ping-button')}
           </button>
         </div>
-        ${this.renderAutoCard()}
-        <server-list
-          ?darkMode=${this.darkMode}
-          .servers=${this.servers}
-          .localize=${this.localize}
-          .selectedId=${this.isAuto ? '' : (this.targetServer?.id ?? '')}
-          .pings=${proclientStore.pings}
-          ?pinging=${proclientStore.pinging}
-          .pingingIds=${new Set(proclientStore.pingingIds)}
-        ></server-list>
+        ${this.renderAutoCard()} ${this.renderGroups()}
         ${this.renderConnectBar()}
       `;
     }
+  }
+}
+
+const COLLAPSED_GROUPS_KEY = 'proclient.collapsedGroups';
+const MANUAL_GROUP = 'manual';
+
+function readCollapsedGroups(): Set<string> {
+  try {
+    const list = JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) || '[]');
+    return new Set(Array.isArray(list) ? list : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsedGroups(groups: Set<string>) {
+  try {
+    localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...groups]));
+  } catch {
+    // ignore
   }
 }
 

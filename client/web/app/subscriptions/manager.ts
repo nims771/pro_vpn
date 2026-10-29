@@ -98,9 +98,10 @@ export class SubscriptionManager {
       updatedAt: Date.now(),
       skipped: downloaded.skipped,
     };
+    // Newest on top; the older ones move down.
     proclientStore.setSubscriptions([
-      ...proclientStore.subscriptions,
       subscription,
+      ...proclientStore.subscriptions,
     ]);
     return this.apply(subscription, downloaded);
   }

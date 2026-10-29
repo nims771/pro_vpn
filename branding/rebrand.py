@@ -328,7 +328,10 @@ def apply_electron(cfg: dict, prev: dict) -> None:
         conf["productName"] = name
         conf["artifactName"] = f"{slug}-Setup-${{arch}}.${{ext}}"
         # Своё имя пакета = своя папка настроек (%APPDATA%), не как у Outline.
-        conf.setdefault("extraMetadata", {})["name"] = slug.lower() + "-client"
+        # Задаётся один раз: при смене названия серверы на ПК не пропадают.
+        meta = conf.setdefault("extraMetadata", {})
+        if meta.get("name", "outline-client") == "outline-client":
+            meta["name"] = slug.lower() + "-client"
         nsis = conf.setdefault("nsis", {})
         nsis.update({
             "oneClick": False,

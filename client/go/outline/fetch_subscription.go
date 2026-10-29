@@ -81,8 +81,8 @@ func fetchSubscription(input string) (string, error) {
 		}
 	}
 
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(req)
+	// Fork: outside the VPN first, so a blocked server can still be replaced.
+	resp, err := doOutsideVPNFirst(req, 20*time.Second)
 	if err != nil {
 		return "", platerrors.PlatformError{
 			Code:    platerrors.FetchConfigFailed,

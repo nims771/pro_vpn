@@ -280,6 +280,33 @@ export class AppRoot extends mixinBehaviors(
           justify-content: space-between;
         }
 
+        /* Fork: notifications drop in at the top, right under the app name,
+         * instead of covering the connect button at the bottom. */
+        paper-toast.top-toast {
+          --paper-toast-background-color: #1c2620;
+          border-left: 4px solid var(--outline-primary, #16a34a);
+          border-radius: 12px;
+          bottom: auto !important;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+          font-size: 0.86rem;
+          left: 50% !important;
+          line-height: 1.35;
+          margin: 0;
+          max-width: 480px;
+          min-height: 0;
+          min-width: 0;
+          padding: 11px 14px;
+          right: auto !important;
+          top: var(--proclient-toast-top, 64px) !important;
+          transform: translate(-50%, -14px);
+          width: calc(100% - 24px);
+          z-index: 200;
+        }
+
+        paper-toast.top-toast.paper-toast-open {
+          transform: translate(-50%, 0);
+        }
+
         paper-toast paper-button {
           color: var(--light-green);
           text-align: center;
@@ -413,7 +440,7 @@ export class AppRoot extends mixinBehaviors(
         localize="[[localize]]"
       ></auto-connect-dialog>
 
-      <paper-toast id="toast" class="fit-bottom" no-cancel-on-esc-key="">
+      <paper-toast id="toast" class="top-toast" no-cancel-on-esc-key="">
         <paper-button
           id="toastButton"
           on-tap="_callToastHandler"
@@ -710,6 +737,13 @@ export class AppRoot extends mixinBehaviors(
       this.$.toast.close();
     }
     this.async(function () {
+      // Fork: place it just below the header (whatever its height).
+      const header = this.shadowRoot.querySelector('root-header');
+      const bottom = header ? header.getBoundingClientRect().bottom : 56;
+      this.$.toast.style.setProperty(
+        '--proclient-toast-top',
+        `${Math.round(bottom + 8)}px`
+      );
       this.$.toast.text = text;
       this.$.toast.duration = duration || 3000;
 

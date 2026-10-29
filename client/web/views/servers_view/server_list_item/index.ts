@@ -43,6 +43,8 @@ export interface ServerListItem {
   name: string;
   connectionState: ServerConnectionState;
   connectionType?: ServerConnectionType;
+  /** Fork: the panel subscription this server came from, if any. */
+  subscriptionId?: string;
 }
 
 /**

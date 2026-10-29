@@ -163,6 +163,17 @@ export class App {
         void this.deleteSubscription(event.detail?.id);
       }
     );
+    // Fork: the connected server stopped working (its IP may be blocked).
+    this.rootEl.addEventListener(
+      'ProclientRecoverServer',
+      (event: CustomEvent) => {
+        const {serverId, done} = event.detail ?? {};
+        void this.recoverServer(serverId).then(
+          replacement => done?.(replacement),
+          () => done?.(undefined)
+        );
+      }
+    );
 
     // Register handlers for events fired by Polymer components.
     this.rootEl.$.serversView.addEventListener(
@@ -559,6 +570,34 @@ export class App {
     }
   }
 
+  /**
+   * Fork: asks the panel (outside the VPN, so it works even though the server
+   * is unreachable) whether the server moved to a new address, and if so
+   * connects to it. Resolves with the new server's id, or undefined.
+   */
+  private async recoverServer(serverId?: string): Promise<string | undefined> {
+    if (!serverId) return undefined;
+    const subscriptionId = this.serverRepo.getSubscriptionId?.(serverId);
+    if (!subscriptionId) return undefined;
+    console.log(
+      `server ${serverId} is unreachable: refreshing its subscription`
+    );
+    try {
+      await this.subscriptions.refresh(subscriptionId);
+    } catch (e) {
+      console.warn(`recovery refresh failed: ${e}`);
+      return undefined;
+    }
+    const replacement = this.serverRepo.findReplacement?.(serverId);
+    if (!replacement) return undefined;
+    console.log(`server ${serverId} moved: connecting to ${replacement}`);
+    this.rootEl.showToast(this.localize('proclient-server-moved'), 4000);
+    void this.connectServer(
+      new CustomEvent('ConnectPressed', {detail: {serverId: replacement}})
+    );
+    return replacement;
+  }
+
   private async deleteSubscription(id?: string) {
     if (!id) return;
     if (
@@ -731,16 +770,18 @@ export class App {
   }
 
   private markOthersDisconnected(serverId: string) {
+    let dropped = false;
     for (const other of this.rootEl.servers as ServerListItem[]) {
-      if (
-        other.id !== serverId &&
-        other.connectionState !== ServerConnectionState.DISCONNECTED
-      ) {
+      if (other.id === serverId) continue;
+      if (other.connectionState !== ServerConnectionState.DISCONNECTED) {
         this.updateServerListItem(other.id, {
           connectionState: ServerConnectionState.DISCONNECTED,
         });
       }
+      // A server the panel dropped, kept only while it was connected.
+      if (this.serverRepo.dropIfStale?.(other.id)) dropped = true;
     }
+    if (dropped) this.syncServersToUI();
   }
 
   private async installVpnService(): Promise<void> {
@@ -917,6 +958,10 @@ export class App {
   private onServerDisconnected(event: events.ServerDisconnected): void {
     console.debug(`server ${event.serverId} disconnected`);
     this.clearStuckReconnectTimer(event.serverId);
+    if (this.serverRepo.dropIfStale?.(event.serverId)) {
+      this.syncServersToUI();
+      return;
+    }
     try {
       this.updateServerListItem(event.serverId, {
         connectionState: ServerConnectionState.DISCONNECTED,
@@ -1014,6 +1059,7 @@ export class App {
       address: server.address,
       id: server.id,
       connectionState: ServerConnectionState.DISCONNECTED,
+      subscriptionId: this.serverRepo.getSubscriptionId?.(server.id),
     };
   }
 
@@ -1031,9 +1077,16 @@ export class App {
   }
 
   private syncServersToUI() {
-    this.rootEl.servers = this.serverRepo
-      .getAll()
-      .map(this.makeServerListItem.bind(this));
+    // Fork: keep the state of cards that already exist (a subscription
+    // refresh must not flash the connected server as "disconnected").
+    const previous = new Map(
+      ((this.rootEl.servers ?? []) as ServerListItem[]).map(s => [s.id, s])
+    );
+    this.rootEl.servers = this.serverRepo.getAll().map(server => {
+      const item = this.makeServerListItem(server);
+      const old = previous.get(server.id);
+      return old ? {...item, connectionState: old.connectionState} : item;
+    });
     this.syncConnectivityStateToServerCards();
   }
 
@@ -1046,9 +1099,25 @@ export class App {
   private async syncServerConnectivityState(server: Server) {
     try {
       const isRunning = await server.checkRunning();
+      // Fork: don't override a transition in progress (connecting,
+      // reconnecting, disconnecting): its own events will settle it.
+      const current = (this.rootEl.servers as ServerListItem[]).find(
+        s => s.id === server.id
+      )?.connectionState;
+      const inProgress = isRunning
+        ? [
+            ServerConnectionState.RECONNECTING,
+            ServerConnectionState.DISCONNECTING,
+          ]
+        : [
+            ServerConnectionState.CONNECTING,
+            ServerConnectionState.RECONNECTING,
+          ];
+      if (current !== undefined && inProgress.includes(current)) return;
       const connectionState = isRunning
         ? ServerConnectionState.CONNECTED
         : ServerConnectionState.DISCONNECTED;
+      if (current === connectionState) return;
       this.updateServerListItem(server.id, {connectionState});
     } catch (e) {
       console.error('Failed to sync server connectivity state', e);

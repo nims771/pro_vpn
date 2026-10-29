@@ -39,7 +39,7 @@ ${StrRep}
   UserInfo::GetAccountType
   Pop $0
   StrCmp $0 "Admin" isadmin
-  MessageBox MB_OK "Sorry, ProVPN requires administrator permissions."
+  MessageBox MB_OK "Sorry, Protected VPN requires administrator permissions."
   Quit
 
   isadmin:
@@ -89,13 +89,13 @@ ${StrRep}
 
   StrCmp $DRIVER_FAILURE_MAGIC_NUMBER_INDEX "" submitsentryreport
   ; The term "device software" is the same as that used by the prompt, at least on Windows 7.
-  MessageBox MB_OK "Sorry, you must install the device software in order to use ProVPN. Please try \
+  MessageBox MB_OK "Sorry, you must install the device software in order to use Protected VPN. Please try \
     running the installer again."
   Quit
 
   submitsentryreport:
-  MessageBox MB_OK "Sorry, we could not configure your system to connect to ProVPN. Please try \
-    running the installer again. If you still cannot install ProVPN, please get in \
+  MessageBox MB_OK "Sorry, we could not configure your system to connect to Protected VPN. Please try \
+    running the installer again. If you still cannot install Protected VPN, please get in \
     touch with us and let us know that the TAP device failed to install with error code $0."
 
   ; Submit a Sentry error event.
@@ -155,8 +155,8 @@ ${StrRep}
   StrCmp $0 0 success
   ; TODO: Trigger a Sentry report for service installation failure, too, and revisit
   ;       the restart stuff in the TypeScript code.
-  MessageBox MB_OK "Sorry, we could not configure your system to connect to ProVPN. Please try \
-    running the installer again. If you still cannot install ProVPN, please get in touch with us \
+  MessageBox MB_OK "Sorry, we could not configure your system to connect to Protected VPN. Please try \
+    running the installer again. If you still cannot install Protected VPN, please get in touch with us \
     and let us know that OutlineService failed to install."
   Quit
 

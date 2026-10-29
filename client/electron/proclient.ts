@@ -21,6 +21,8 @@ import * as os from 'os';
 
 import {ipcMain} from 'electron';
 
+import {invokeGoMethod} from './go_plugin';
+
 // ---- Traffic counters, reported by tun2socks on stdout ----
 
 let traffic = {rxBytes: 0, txBytes: 0};
@@ -37,6 +39,24 @@ export function parseTrafficStats(data?: string | Buffer) {
   if (last) {
     traffic = {rxBytes: Number(last[1]), txBytes: Number(last[2])};
   }
+}
+
+// ---- Subscription refresh and pings outside the VPN ----
+
+let bypassAdapter = '';
+
+/**
+ * Tells the Go backend which physical adapter to use for subscription
+ * downloads and pings while the VPN is up ('' when it is down), so a blocked
+ * server can still be replaced from the panel.
+ */
+export function setBypassAdapter(index?: string) {
+  const value = index && Number(index) > 0 ? String(index) : '';
+  if (value === bypassAdapter) return;
+  bypassAdapter = value;
+  invokeGoMethod('SetBypassInterface', value).catch(e =>
+    console.warn(`could not set the bypass adapter: ${e}`)
+  );
 }
 
 // ---- Connection test: an HTTP request through the VPN ----

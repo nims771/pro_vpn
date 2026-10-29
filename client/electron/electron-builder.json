@@ -1,6 +1,6 @@
 {
-  "productName": "ProVPN",
-  "artifactName": "ProVPN-Setup-${arch}.${ext}",
+  "productName": "Protected VPN",
+  "artifactName": "ProtectedVPN-Setup-${arch}.${ext}",
   "directories": {
     "buildResources": "output/client/electron",
     "output": "output/client/electron/build"
@@ -38,8 +38,8 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "ProVPN",
-    "uninstallDisplayName": "ProVPN",
+    "shortcutName": "Protected VPN",
+    "uninstallDisplayName": "Protected VPN",
     "runAfterFinish": true
   },
   "win": {

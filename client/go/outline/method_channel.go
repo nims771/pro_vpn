@@ -119,6 +119,12 @@ func InvokeMethod(method string, input string) *InvokeMethodResult {
 			Error: platerrors.ToPlatformError(err),
 		}
 
+	case MethodSetBypassInterface:
+		err := setBypassInterface(input)
+		return &InvokeMethodResult{
+			Error: platerrors.ToPlatformError(err),
+		}
+
 	case MethodPingServers:
 		content, err := pingServers(input)
 		return &InvokeMethodResult{

@@ -61,4 +61,6 @@ export interface ServerRepository {
     entries: Array<{accessKey: string; name: string}>
   ): Promise<{added: number; removed: number; failed: number; total: number}>;
   forgetSubscription?(subscriptionId: string): Promise<void>;
+  findReplacement?(serverId: string): string | undefined;
+  dropIfStale?(serverId: string): boolean;
 }

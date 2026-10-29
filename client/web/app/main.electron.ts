@@ -154,7 +154,7 @@ installDefaultMethodChannel(new ElectronMethodChannel());
 
 // Fork: animated intro, plus the speed counters, connection test and device
 // id served by the main process (client/electron/proclient.ts).
-showIntro(document.title || 'ProVPN');
+showIntro(document.title || 'Protected VPN');
 if (isOsSupported) {
   const ipc = window.electron.methodChannel;
   proclientStore.setTrafficSource(() => ipc.invoke('proclient-traffic'));

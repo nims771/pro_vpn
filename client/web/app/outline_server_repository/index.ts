@@ -72,7 +72,13 @@ interface OutlineServerJson {
   readonly subscriptionId?: string;
 }
 
-type ServerEntry = {accessKey: string; server: Server; subscriptionId?: string};
+type ServerEntry = {
+  accessKey: string;
+  server: Server;
+  subscriptionId?: string;
+  /** Fork: the panel no longer lists this key; kept only while connected. */
+  stale?: boolean;
+};
 
 /** Fork: result of syncing a subscription's servers into the repository. */
 export interface SubscriptionSyncResult {
@@ -287,14 +293,37 @@ class OutlineServerRepository implements ServerRepository {
         existing.set(entry.accessKey.trim(), entry);
       }
     }
+    const isRunning = async (entry: ServerEntry) => {
+      try {
+        return await entry.server.checkRunning();
+      } catch {
+        return false;
+      }
+    };
 
+    // Servers the panel no longer lists, by name: if a new key comes with the
+    // same name (the server moved to a new address), it takes over that id, so
+    // the user's selection survives the change.
+    const wantedKeys = new Set(entries.map(e => e.accessKey.trim()));
+    const replaceable = new Map<string, ServerEntry[]>();
+    for (const [key, entry] of existing) {
+      if (wantedKeys.has(key) || (await isRunning(entry))) continue;
+      const list = replaceable.get(entry.server.name) ?? [];
+      list.push(entry);
+      replaceable.set(entry.server.name, list);
+    }
+
+    const order: string[] = [];
     const wanted = new Set<string>();
     for (const {accessKey, name} of entries) {
       const key = accessKey.trim();
+      if (wanted.has(key)) continue;
       wanted.add(key);
       const current = existing.get(key);
       if (current) {
         if (name && current.server.name !== name) current.server.name = name;
+        current.stale = false;
+        order.push(current.server.id);
         result.total++;
         continue;
       }
@@ -303,9 +332,20 @@ class OutlineServerRepository implements ServerRepository {
         result.total++;
         continue;
       }
+      const reuse = replaceable.get(name)?.shift();
       try {
-        await this.internalCreateServer(uuidv4(), key, name, subscriptionId);
-        result.added++;
+        if (reuse) {
+          existing.delete(reuse.accessKey.trim());
+          this.serverById.delete(reuse.server.id);
+        }
+        const server = await this.internalCreateServer(
+          reuse?.server.id ?? uuidv4(),
+          key,
+          name,
+          subscriptionId
+        );
+        order.push(server.id);
+        if (!reuse) result.added++;
         result.total++;
       } catch (e) {
         console.warn(`subscription key skipped: ${e}`);
@@ -315,13 +355,10 @@ class OutlineServerRepository implements ServerRepository {
 
     for (const [key, entry] of existing) {
       if (wanted.has(key)) continue;
-      let running = false;
-      try {
-        running = await entry.server.checkRunning();
-      } catch {
-        // Assume not running.
-      }
-      if (running) {
+      if (await isRunning(entry)) {
+        // Connected right now: keep it until the user (or failover) leaves it.
+        entry.stale = true;
+        order.push(entry.server.id);
         result.total++;
         continue;
       }
@@ -330,8 +367,65 @@ class OutlineServerRepository implements ServerRepository {
       void this.eraseServiceStorage(entry.server.id);
     }
 
+    this.reorderSubscription(subscriptionId, order);
     this.storeServers();
     return result;
+  }
+
+  /** Puts a subscription's servers in the panel's order, where they were. */
+  private reorderSubscription(subscriptionId: string, order: string[]) {
+    const reordered = new Map<string, ServerEntry>();
+    let placed = false;
+    const placeGroup = () => {
+      if (placed) return;
+      placed = true;
+      for (const id of order) {
+        const entry = this.serverById.get(id);
+        if (entry) reordered.set(id, entry);
+      }
+    };
+    for (const [id, entry] of this.serverById) {
+      if (entry.subscriptionId === subscriptionId) {
+        placeGroup();
+      } else {
+        reordered.set(id, entry);
+      }
+    }
+    placeGroup();
+    for (const [id, entry] of this.serverById) {
+      if (!reordered.has(id)) reordered.set(id, entry);
+    }
+    this.serverById = reordered;
+  }
+
+  /**
+   * Fork: after a refresh, the server that replaced `serverId` (same
+   * subscription and name, new address), if the panel moved it.
+   */
+  findReplacement(serverId: string): string | undefined {
+    const entry = this.serverById.get(serverId);
+    if (!entry?.stale || !entry.subscriptionId) return undefined;
+    for (const other of this.serverById.values()) {
+      if (
+        other !== entry &&
+        !other.stale &&
+        other.subscriptionId === entry.subscriptionId &&
+        other.server.name === entry.server.name
+      ) {
+        return other.server.id;
+      }
+    }
+    return undefined;
+  }
+
+  /** Fork: forgets a server the panel dropped, once it is no longer in use. */
+  dropIfStale(serverId: string): boolean {
+    const entry = this.serverById.get(serverId);
+    if (!entry?.stale) return false;
+    this.serverById.delete(serverId);
+    void this.eraseServiceStorage(serverId);
+    this.storeServers();
+    return true;
   }
 
   /** Removes every server of a subscription that is not connected right now. */

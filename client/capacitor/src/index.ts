@@ -235,7 +235,7 @@ function wireExternalLinkHandling() {
 }
 
 // Fork: animated intro over the app while it starts (title = app name).
-showIntro(document.title || 'ProVPN');
+showIntro(document.title || 'Protected VPN');
 
 // Bootstrap: install the method channel, wire external links, then hand off
 // to the shared main() — mirroring the Cordova and Electron entry points.
@@ -256,6 +256,7 @@ if (hasDeviceSupport && Capacitor.getPlatform() === 'android') {
   );
   setDeviceInfoSource(() => CapacitorPluginOutline.getDeviceInfo());
   setSystemVpnSettingsOpener(() => CapacitorPluginOutline.openVpnSettings());
+  proclientStore.nativeWatchdog = true;
 } else if (!hasDeviceSupport && location.search.includes('demoTraffic')) {
   // Browser preview only (?demoTraffic): simulated counters to design the panel.
   let rx = 300 * 1024 * 1024;
@@ -267,6 +268,8 @@ if (hasDeviceSupport && Capacitor.getPlatform() === 'android') {
   });
   proclientStore.setLatencySource(async () => {
     await new Promise(resolve => setTimeout(resolve, 600));
+    // Preview tests set this to simulate a server that stopped answering.
+    if ((window as {proclientDemoDead?: boolean}).proclientDemoDead) return -1;
     return 120 + Math.round(Math.random() * 80);
   });
 }

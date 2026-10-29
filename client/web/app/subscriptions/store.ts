@@ -108,6 +108,16 @@ class ProclientStore {
     this.latencySource = source;
   }
 
+  get canMeasureLatency(): boolean {
+    return !!this.latencySource;
+  }
+
+  /**
+   * Set by platforms whose VPN service watches the server itself (Android) and
+   * reports "reconnecting"; elsewhere the app checks the connection.
+   */
+  nativeWatchdog = false;
+
   /** Milliseconds of an HTTP request through the server; -1 = failed. */
   async measureLatency(): Promise<number | undefined> {
     if (!this.latencySource) return undefined;

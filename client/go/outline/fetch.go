@@ -29,10 +29,17 @@ const fetchTimeout = 10 * time.Second
 // The function makes an HTTP GET request to the specified URL and returns the response body as a
 // string. If the request fails or the server returns a non-2xx status code, an error is returned.
 func fetchResource(url string) (string, error) {
-	client := &http.Client{
-		Timeout: fetchTimeout,
+	// Fork: outside the VPN first, so a blocked server can still be replaced.
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", platerrors.PlatformError{
+			Code:    platerrors.FetchConfigFailed,
+			Message: "invalid URL",
+			Details: platerrors.ErrorDetails{"url": url},
+			Cause:   platerrors.ToPlatformError(err),
+		}
 	}
-	resp, err := client.Get(url)
+	resp, err := doOutsideVPNFirst(req, fetchTimeout)
 	if err != nil {
 		return "", platerrors.PlatformError{
 			Code:    platerrors.FetchConfigFailed,

@@ -78,8 +78,13 @@ func pingServers(input string) (string, error) {
 }
 
 func pingOne(address string) int64 {
+	// Fork: on Windows while connected, measure the direct path, not the tunnel.
+	dialer := newBypassDialer(pingTimeout)
+	if dialer == nil {
+		dialer = &net.Dialer{Timeout: pingTimeout}
+	}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", address, pingTimeout)
+	conn, err := dialer.Dial("tcp", address)
 	if err != nil {
 		return -1
 	}

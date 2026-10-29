@@ -19,7 +19,7 @@ import {powerMonitor} from 'electron';
 import {pathToEmbeddedTun2socksBinary} from './app_paths';
 import {checkUDPConnectivity, checkUDPConnectivityWindows} from './go_helpers';
 import {ChildProcessHelper, ProcessTerminatedSignalError} from './process';
-import {parseTrafficStats} from './proclient';
+import {parseTrafficStats, setBypassAdapter} from './proclient';
 import {RoutingDaemon} from './routing_service';
 import {VpnTunnel} from './vpn_tunnel';
 import {TunnelStatus} from '../web/app/outline_server_repository/vpn';
@@ -129,6 +129,7 @@ export class GoVpnTunnel implements VpnTunnel {
     console.log('starting routing daemon');
     this.gatewayAdapterIndex = await this.routing.start();
     await this.throwIfCancelled();
+    if (IS_WINDOWS) setBypassAdapter(this.gatewayAdapterIndex);
     await this.startTun2socks();
     await this.throwIfCancelled();
   }
@@ -160,6 +161,7 @@ export class GoVpnTunnel implements VpnTunnel {
     if (status === TunnelStatus.CONNECTED) {
       if (gatewayIndex) {
         this.gatewayAdapterIndex = gatewayIndex;
+        if (IS_WINDOWS) setBypassAdapter(gatewayIndex);
       }
       if (this.reconnectedListener) {
         this.reconnectedListener();
@@ -241,6 +243,7 @@ export class GoVpnTunnel implements VpnTunnel {
   // Use #onceDisconnected to be notified when the tunnel terminates.
   async disconnect() {
     this.cancelled = true;
+    if (IS_WINDOWS) setBypassAdapter(undefined);
     if (this.disconnected) {
       return;
     }

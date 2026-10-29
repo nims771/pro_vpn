@@ -143,7 +143,7 @@ function setupTray(): void {
   tray.on('click', () => {
     mainWindow?.show();
   });
-  tray.setToolTip('ProVPN');
+  tray.setToolTip('Protected VPN');
   updateTray(TunnelStatus.DISCONNECTED);
 }
 
