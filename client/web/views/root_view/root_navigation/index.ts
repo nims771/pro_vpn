@@ -233,15 +233,7 @@ export class RootNavigation extends LitElement {
             <md-icon slot="start">language</md-icon>
             ${this.localize('change-language-page-title')}
           </md-list-item>
-          ${this.showAppearanceView
-            ? html`
-                <md-list-item @click=${() => this.changePage('appearance')}>
-                  <md-ripple></md-ripple>
-                  <md-icon slot="start">brightness_medium</md-icon>
-                  ${this.localize('appearance-page-title')}
-                </md-list-item>
-              `
-            : nothing}
+          <!-- Fork: light / dark theme and colors live in Settings. -->
           ${this.showQuit
             ? html`<md-list-item @click=${this.quit}>
                 <md-ripple></md-ripple>

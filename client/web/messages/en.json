@@ -219,5 +219,13 @@
   "proclient-subscription-active": "Connected: {name}",
   "proclient-subscription-expand": "Expand",
   "proclient-subscription-collapse": "Collapse",
-  "proclient-my-servers": "My servers"
+  "proclient-my-servers": "My servers",
+  "proclient-settings-appearance": "Appearance",
+  "proclient-set-theme": "Theme",
+  "proclient-theme-light": "Light",
+  "proclient-theme-dark": "Dark",
+  "proclient-theme-system": "System",
+  "proclient-set-color": "Color",
+  "proclient-set-color-desc": "Header, menu, buttons and highlights",
+  "proclient-color-custom": "Custom color"
 }

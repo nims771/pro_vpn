@@ -298,6 +298,8 @@ export class ProclientSubscription extends LitElement {
   @property({type: Object}) localize: Localizer = msg => msg;
   @property({attribute: false}) subscription?: SubscriptionView;
   @property({type: Boolean, reflect: true}) collapsed = false;
+  /** A ping of this subscription's servers is running. */
+  @property({type: Boolean}) pinging = false;
   /** Name of this subscription's connected server, if any. */
   @property({type: String}) activeName = '';
 
@@ -310,6 +312,11 @@ export class ProclientSubscription extends LitElement {
 
       .sub-head {
         cursor: pointer;
+        gap: 2px;
+      }
+
+      .sub-icon {
+        margin-right: 6px;
       }
 
       .chevron md-icon {
@@ -398,6 +405,19 @@ export class ProclientSubscription extends LitElement {
                   ${meta}
                 </div>`}
           </div>
+          <md-icon-button
+            class=${this.pinging ? 'spin' : ''}
+            title=${this.localize('proclient-ping-button')}
+            ?disabled=${this.pinging}
+            @click=${(e: Event) => {
+              e.stopPropagation();
+              this.dispatchEvent(
+                new CustomEvent('ping-group', {bubbles: true, composed: true})
+              );
+            }}
+          >
+            <md-icon>speed</md-icon>
+          </md-icon-button>
           <md-icon-button
             class=${s.refreshing ? 'spin' : ''}
             title=${this.localize('proclient-subscription-refresh')}

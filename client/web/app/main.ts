@@ -27,8 +27,12 @@ import {
 } from './outline_server_repository/vpn.fake';
 import {OutlinePlatform} from './platform';
 import {Settings} from './settings';
+import {applySavedAccent} from './theme';
 import {EventQueue} from '../model/events';
 import {ServerRepository} from '../model/server.js';
+
+// Fork: the accent color chosen in Settings, before anything is drawn.
+applySavedAccent();
 
 // Used to determine whether to use Polymer functionality on app initialization failure.
 let webComponentsAreReady = false;

@@ -279,10 +279,8 @@ def apply_web(cfg: dict, prev: dict) -> None:
     dialog = WEB / "views" / "root_view" / "add_access_key_dialog" / "index.ts"
     edit(dialog, lambda t: t.replace(f"<a href={prev['getKeyUrl']}>", f"<a href={cfg['getKeyUrl']}>"))
 
-    app_root = WEB / "ui_components" / "app-root.js"
-    edit(app_root, lambda t: sub_required(
-        sub_required(t, r"(--light-green:\s*)#[0-9A-Fa-f]{6};", rf"\g<1>{to_hex(pal['primary'])};", app_root),
-        r"(--medium-green:\s*)#[0-9A-Fa-f]{6};", rf"\g<1>{to_hex(pal['dark'])};", app_root))
+    # app-root.js берёт цвета из --outline-primary (их можно менять в настройках
+    # приложения), отдельно перекрашивать его не нужно.
 
     # Название в текстах интерфейса, на всех языках.
     old_name = re.escape(prev["name"])

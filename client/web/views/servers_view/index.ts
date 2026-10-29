@@ -256,79 +256,63 @@ export class ServerList extends LitElement {
 
       .group-label {
         align-items: center;
-        color: var(--outline-label-color);
         display: flex;
+        gap: 2px;
+        padding: 2px 2px 2px 6px;
+      }
+
+      .group-toggle {
+        align-items: center;
+        color: var(--outline-label-color);
+        flex: 1;
         flex-direction: row;
         font-family: var(--outline-font-family);
         font-size: 0.8rem;
         font-weight: 600;
         gap: 8px;
+        justify-content: flex-start;
         letter-spacing: 0.03em;
-        padding: 4px 6px;
+        min-width: 0;
+        padding: 6px 0;
         text-transform: uppercase;
-        width: 100%;
       }
 
-      .group-label span {
-        flex: 1;
-        text-align: left;
+      .group-toggle md-icon,
+      .icon-button md-icon {
+        --md-icon-size: 20px;
+        font-size: 20px;
       }
 
-      .group-label md-icon {
-        --md-icon-size: 18px;
-        font-size: 18px;
+      .icon-button {
+        border-radius: 50%;
+        color: var(--outline-label-color);
+        flex: none;
+        height: 32px;
+        width: 32px;
       }
 
-      .group-label .chevron {
+      .icon-button:hover {
+        background: rgba(var(--outline-primary-rgb), 0.08);
+      }
+
+      .icon-button.spin md-icon {
+        animation: spin 0.9s linear infinite;
+      }
+
+      .icon-button.chevron md-icon {
         transition: transform 0.25s ease;
       }
 
-      .group-label .chevron.closed {
+      .icon-button.chevron.closed md-icon {
         transform: rotate(-90deg);
       }
 
-      /* Fork: "Servers · 3" + ping button above the list. */
-      .list-toolbar {
-        align-items: center;
-        box-sizing: border-box;
-        display: flex;
-        justify-content: space-between;
-        padding: 10px 12px 2px 16px;
+      .groups {
+        padding-top: 6px;
       }
 
-      .list-title {
-        color: var(--outline-label-color);
-        font-size: 0.8rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
-
-      .ping-button {
-        align-items: center;
-        background: rgba(var(--outline-primary-rgb), 0.1);
-        border-radius: 99px;
-        color: var(--outline-primary);
-        cursor: pointer;
-        display: inline-flex;
-        flex-direction: row;
-        font-size: 0.8rem;
-        font-weight: 600;
-        gap: 4px;
-        padding: 5px 12px 5px 8px;
-      }
-
-      .ping-button md-icon {
-        --md-icon-size: 18px;
-        font-size: 18px;
-      }
-
-      .ping-button[disabled] {
-        opacity: 0.6;
-      }
-
-      .ping-button[disabled] md-icon {
-        animation: spin 1s linear infinite;
+      .group .auto-card {
+        margin: 6px 0 0;
       }
 
       @keyframes spin {
@@ -431,40 +415,80 @@ export class ServerList extends LitElement {
     }
   }
 
+  // ---- Groups: one per subscription (newest first), then manual servers ----
+
+  /** Group ids in display order. */
+  private get groupIds(): string[] {
+    const servers = this.servers ?? [];
+    const ids = proclientStore.subscriptions.map(s => s.id);
+    if (servers.some(s => this.groupOf(s) === MANUAL_GROUP)) {
+      ids.push(MANUAL_GROUP);
+    }
+    return ids;
+  }
+
+  private groupOf(server: ServerListItem): string {
+    const id = server.subscriptionId;
+    return id && proclientStore.subscriptions.some(s => s.id === id)
+      ? id
+      : MANUAL_GROUP;
+  }
+
+  private serversIn(groupId: string): ServerListItem[] {
+    return (this.servers ?? []).filter(s => this.groupOf(s) === groupId);
+  }
+
   private get isAuto(): boolean {
-    return this.chosenServerId === ServerList.AUTO;
+    return this.chosenServerId.startsWith(ServerList.AUTO);
+  }
+
+  /**
+   * The group whose "Auto" is chosen ("auto:<group>"); the old plain "auto"
+   * and a group that no longer exists mean the first one.
+   */
+  private get autoGroup(): string | undefined {
+    if (!this.isAuto) return undefined;
+    const ids = this.groupIds;
+    const wanted = this.chosenServerId.slice(ServerList.AUTO.length + 1);
+    return ids.includes(wanted) ? wanted : ids[0];
   }
 
   /** Servers sorted best-first by ping; unmeasured after, unreachable last. */
-  private rankedServers(exclude: string[] = []): ServerListItem[] {
+  private rankedServers(
+    exclude: string[] = [],
+    groupId?: string
+  ): ServerListItem[] {
     const pings = proclientStore.pings;
     const score = (s: ServerListItem) => {
       const ms = pings[s.id];
       if (typeof ms === 'number') return ms;
       return ms === null ? 1e9 : 1e6;
     };
-    return (this.servers ?? [])
+    const pool = groupId ? this.serversIn(groupId) : (this.servers ?? []);
+    return pool
       .filter(s => !exclude.includes(s.id) && !s.errorMessageId)
       .sort((a, b) => score(a) - score(b));
   }
 
-  private get bestServer(): ServerListItem | undefined {
-    return this.rankedServers()[0];
+  private bestServerIn(groupId?: string): ServerListItem | undefined {
+    return this.rankedServers([], groupId)[0];
   }
 
-  /** Pings everything (fresh), then connects to the best, falling back down the list. */
-  private async startChain(exclude: string[] = []) {
+  /**
+   * Pings the group (fresh), then connects to its best server, falling back
+   * down the list. Without a group: the group of the chosen "Auto".
+   */
+  private async startChain(exclude: string[] = [], groupId = this.autoGroup) {
     if (this.searching) return;
     this.searching = true;
+    const pool = groupId ? this.serversIn(groupId) : (this.servers ?? []);
     try {
-      await pingServers(
-        (this.servers ?? []).map(s => ({id: s.id, address: s.address}))
-      );
+      await pingServers(pool.map(s => ({id: s.id, address: s.address})));
     } finally {
       this.searching = false;
     }
     const pings = proclientStore.pings;
-    let ranked = this.rankedServers(exclude);
+    let ranked = this.rankedServers(exclude, groupId);
     // Prefer servers that answered; keep the rest only as a last resort.
     const reachable = ranked.filter(s => pings[s.id] !== null);
     if (reachable.length) ranked = reachable;
@@ -570,12 +594,11 @@ export class ServerList extends LitElement {
       return;
     }
     const active = this.activeServer;
-    if (
-      getSettings().failover &&
-      active?.id === serverId &&
-      (this.servers?.length ?? 0) >= 2
-    ) {
-      void this.startChain([serverId]);
+    if (!getSettings().failover || active?.id !== serverId) return;
+    // Next best server of the same subscription (or of the chosen "Auto").
+    const group = this.autoGroup ?? this.groupOf(active);
+    if (this.serversIn(group).length >= 2) {
+      void this.startChain([serverId], group);
     }
   }
 
@@ -655,7 +678,14 @@ export class ServerList extends LitElement {
   /** The server the bottom button acts on. */
   private get targetServer(): ServerListItem | undefined {
     if (this.activeServer) return this.activeServer;
-    if (this.isAuto) return this.bestServer ?? this.servers?.[0];
+    if (this.isAuto) {
+      const group = this.autoGroup;
+      return (
+        this.bestServerIn(group) ??
+        (group ? this.serversIn(group)[0] : undefined) ??
+        this.servers?.[0]
+      );
+    }
     return (
       this.servers?.find(s => s.id === this.chosenServerId) ?? this.servers?.[0]
     );
@@ -667,7 +697,7 @@ export class ServerList extends LitElement {
     this.chosenServerId = serverId;
     writeChosenServer(serverId);
     this.chain = undefined;
-    if (serverId === ServerList.AUTO) return;
+    if (serverId.startsWith(ServerList.AUTO)) return;
 
     // Already connected to another server: switch to the chosen one.
     const active = this.activeServer;
@@ -790,8 +820,9 @@ export class ServerList extends LitElement {
     return [this.localize('proclient-ping-tap'), name];
   }
 
-  private renderAutoCard() {
-    const best = this.bestServer;
+  private renderAutoCard(groupId: string) {
+    const selected = this.isAuto && this.autoGroup === groupId;
+    const best = this.bestServerIn(groupId);
     const ms = best ? proclientStore.pings[best.id] : undefined;
     const sub = best
       ? this.localize('proclient-auto-best', 'name', withFlag(best.name)) +
@@ -800,13 +831,13 @@ export class ServerList extends LitElement {
           : '')
       : this.localize('proclient-auto-desc');
     return html`<div
-      class="auto-card ${this.isAuto ? 'selected' : ''}"
+      class="auto-card ${selected ? 'selected' : ''}"
       role="radio"
-      aria-checked=${this.isAuto ? 'true' : 'false'}
+      aria-checked=${selected ? 'true' : 'false'}
       tabindex="0"
-      @click=${() => this.selectAuto()}
+      @click=${() => this.selectAuto(groupId)}
       @keydown=${(e: KeyboardEvent) =>
-        (e.key === 'Enter' || e.key === ' ') && this.selectAuto()}
+        (e.key === 'Enter' || e.key === ' ') && this.selectAuto(groupId)}
     >
       <span class="auto-radio"></span>
       <span class="auto-icon"><md-icon>bolt</md-icon></span>
@@ -825,70 +856,78 @@ export class ServerList extends LitElement {
       .localize=${this.localize}
       .selectedId=${this.isAuto ? '' : (this.targetServer?.id ?? '')}
       .pings=${proclientStore.pings}
-      ?pinging=${proclientStore.pinging}
       .pingingIds=${new Set(proclientStore.pingingIds)}
     ></server-list>`;
   }
 
   /**
-   * Fork: one block per subscription (newest first) with its quota and its
-   * servers, which can be collapsed; servers added by hand come last.
+   * Fork: one block per subscription (newest first) with its own "Auto", its
+   * quota, ping button and servers, which can be collapsed; servers added by
+   * hand come last.
    */
   private renderGroups() {
-    const servers = this.servers ?? [];
-    const subs = proclientStore.subscriptions;
-    if (!subs.length) return this.renderServerList(servers, false);
-
-    const known = new Set(subs.map(s => s.id));
-    const manual = servers.filter(
-      s => !s.subscriptionId || !known.has(s.subscriptionId)
-    );
     const active = this.activeServer;
-    return html`
-      ${subs.map(sub => {
-        const members = servers.filter(s => s.subscriptionId === sub.id);
-        const collapsed = this.collapsedGroups.has(sub.id);
-        const activeHere = active && members.some(m => m.id === active.id);
-        return html`<section class="group">
-          <proclient-subscription
-            .localize=${this.localize}
-            .subscription=${sub}
-            ?collapsed=${collapsed}
-            .activeName=${activeHere ? withFlag(active!.name) : ''}
-            @toggle-collapse=${() => this.toggleGroup(sub.id)}
-          ></proclient-subscription>
-          ${collapsed || !members.length
-            ? ''
-            : this.renderServerList(members, true)}
-        </section>`;
-      })}
-      ${manual.length
-        ? html`<section class="group manual">
+    return this.groupIds.map(groupId => {
+      const members = this.serversIn(groupId);
+      const collapsed = this.collapsedGroups.has(groupId);
+      const pinging = this.isGroupPinging(groupId);
+      const body =
+        collapsed || !members.length
+          ? ''
+          : html`${this.renderAutoCard(groupId)}
+            ${this.renderServerList(members, true)}`;
+      if (groupId === MANUAL_GROUP) {
+        return html`<section class="group manual">
+          <div class="group-label">
             <button
-              class="group-label"
-              aria-expanded=${this.collapsedGroups.has(MANUAL_GROUP)
-                ? 'false'
-                : 'true'}
+              class="group-toggle"
+              aria-expanded=${collapsed ? 'false' : 'true'}
               @click=${() => this.toggleGroup(MANUAL_GROUP)}
             >
               <md-icon>dns</md-icon>
               <span
                 >${this.localize('proclient-my-servers')} ·
-                ${manual.length}</span
-              >
-              <md-icon
-                class="chevron ${this.collapsedGroups.has(MANUAL_GROUP)
-                  ? 'closed'
-                  : ''}"
-                >expand_more</md-icon
+                ${members.length}</span
               >
             </button>
-            ${this.collapsedGroups.has(MANUAL_GROUP)
-              ? ''
-              : this.renderServerList(manual, true)}
-          </section>`
-        : ''}
-    `;
+            <button
+              class="icon-button ${pinging ? 'spin' : ''}"
+              title=${this.localize('proclient-ping-button')}
+              ?disabled=${pinging}
+              @click=${() => this.pingGroup(MANUAL_GROUP)}
+            >
+              <md-icon>speed</md-icon>
+            </button>
+            <button
+              class="icon-button chevron ${collapsed ? 'closed' : ''}"
+              title=${this.localize(
+                collapsed
+                  ? 'proclient-subscription-expand'
+                  : 'proclient-subscription-collapse'
+              )}
+              @click=${() => this.toggleGroup(MANUAL_GROUP)}
+            >
+              <md-icon>expand_more</md-icon>
+            </button>
+          </div>
+          ${body}
+        </section>`;
+      }
+      const sub = proclientStore.subscriptions.find(s => s.id === groupId);
+      const activeHere = !!active && this.groupOf(active) === groupId;
+      return html`<section class="group">
+        <proclient-subscription
+          .localize=${this.localize}
+          .subscription=${sub}
+          ?collapsed=${collapsed}
+          ?pinging=${pinging}
+          .activeName=${activeHere ? withFlag(active!.name) : ''}
+          @toggle-collapse=${() => this.toggleGroup(groupId)}
+          @ping-group=${() => this.pingGroup(groupId)}
+        ></proclient-subscription>
+        ${body}
+      </section>`;
+    });
   }
 
   @state() private collapsedGroups = readCollapsedGroups();
@@ -901,10 +940,32 @@ export class ServerList extends LitElement {
     writeCollapsedGroups(next);
   }
 
-  private selectAuto() {
-    this.chosenServerId = ServerList.AUTO;
-    writeChosenServer(ServerList.AUTO);
+  private selectAuto(groupId: string) {
+    const id = `${ServerList.AUTO}:${groupId}`;
+    const active = this.activeServer;
+    this.chosenServerId = id;
+    writeChosenServer(id);
     this.chain = undefined;
+    // Connected through another subscription: move to this one's best.
+    if (
+      active &&
+      active.connectionState !== ServerConnectionState.DISCONNECTING &&
+      this.groupOf(active) !== groupId
+    ) {
+      void this.startChain([], groupId);
+    }
+  }
+
+  private pingGroup(groupId: string) {
+    void pingServers(
+      this.serversIn(groupId).map(s => ({id: s.id, address: s.address}))
+    );
+  }
+
+  private isGroupPinging(groupId: string): boolean {
+    return this.serversIn(groupId).some(s =>
+      proclientStore.pingingIds.has(s.id)
+    );
   }
 
   private renderConnectBar() {
@@ -991,21 +1052,7 @@ export class ServerList extends LitElement {
           .servers=${this.servers}
           .localize=${this.localize}
         ></proclient-panel>
-        <div class="list-toolbar">
-          <span class="list-title"
-            >${this.localize('proclient-servers-title')} ·
-            ${this.servers.length}</span
-          >
-          <button
-            class="ping-button"
-            ?disabled=${proclientStore.pinging}
-            @click=${() => this.runPing()}
-          >
-            <md-icon>${proclientStore.pinging ? 'autorenew' : 'speed'}</md-icon>
-            ${this.localize('proclient-ping-button')}
-          </button>
-        </div>
-        ${this.renderAutoCard()} ${this.renderGroups()}
+        <div class="groups">${this.renderGroups()}</div>
         ${this.renderConnectBar()}
       `;
     }

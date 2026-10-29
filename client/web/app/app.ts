@@ -506,12 +506,12 @@ export class App {
   private async requestAddServer(event: CustomEvent) {
     const accessKey: string = event.detail.accessKey;
     // Fork: an https:// link may be a panel subscription with many servers.
-    if (
-      SubscriptionManager.isCandidateUrl(accessKey) &&
-      (await this.addSubscription(accessKey))
-    ) {
+    // The dialog closes right away; the subscription loads in the background
+    // and the notification at the top says how it went.
+    if (SubscriptionManager.isCandidateUrl(accessKey)) {
       this.rootEl.$.addServerView.open = false;
-      return;
+      this.changeToDefaultPage();
+      if (await this.addSubscription(accessKey)) return;
     }
     this.serverRepo
       .add(accessKey)

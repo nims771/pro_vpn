@@ -191,5 +191,13 @@
   "proclient-subscription-active": "Подключено: {name}",
   "proclient-subscription-expand": "Развернуть",
   "proclient-subscription-collapse": "Свернуть",
-  "proclient-my-servers": "Мои серверы"
+  "proclient-my-servers": "Мои серверы",
+  "proclient-settings-appearance": "Оформление",
+  "proclient-set-theme": "Тема",
+  "proclient-theme-light": "Светлая",
+  "proclient-theme-dark": "Тёмная",
+  "proclient-theme-system": "Как в системе",
+  "proclient-set-color": "Цвет",
+  "proclient-set-color-desc": "Шапка, меню, кнопки и выделение",
+  "proclient-color-custom": "Свой цвет"
 }

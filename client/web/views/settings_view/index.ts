@@ -11,7 +11,8 @@
   limitations under the License.
 */
 
-// Fork: "Settings" page — VPN options and this device's HWID.
+// Fork: "Settings" page — VPN options, look (theme, colors) and this
+// device's HWID.
 
 import {Localizer} from '@outline/infrastructure/i18n';
 import {css, html, LitElement, nothing} from 'lit';
@@ -26,6 +27,13 @@ import {
   ProclientSettings,
   updateSettings,
 } from '../../app/proclient_settings';
+import {
+  Accent,
+  ACCENTS,
+  getAccent,
+  onAccentChange,
+  setAccent,
+} from '../../app/theme';
 
 type BoolKey = {
   [K in keyof ProclientSettings]: ProclientSettings[K] extends boolean
@@ -44,8 +52,11 @@ export class SettingsView extends LitElement {
   @state() private settings: ProclientSettings = getSettings();
   @state() private info?: DeviceInfo;
   @state() private copied = false;
+  @state() private accent: Accent = getAccent();
+  @state() private appearance = currentAppearance();
   private copiedTimer?: number;
   private unsubscribe?: () => void;
+  private unsubscribeAccent?: () => void;
 
   static styles = css`
     :host {
@@ -225,6 +236,90 @@ export class SettingsView extends LitElement {
       padding: 8px 14px 4px;
     }
 
+    .swatches {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+      padding: 4px 14px 14px;
+    }
+
+    .swatch {
+      aspect-ratio: 1;
+      border: 0;
+      border-radius: 50%;
+      box-shadow:
+        inset 0 0 0 2px rgba(255, 255, 255, 0.35),
+        0 1px 3px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      display: grid;
+      padding: 0;
+      place-items: center;
+      position: relative;
+      transition: transform 0.15s ease;
+      width: 100%;
+    }
+
+    .swatch:active {
+      transform: scale(0.92);
+    }
+
+    .swatch.selected {
+      box-shadow:
+        0 0 0 3px var(--outline-card-background),
+        0 0 0 5px var(--outline-text-color);
+    }
+
+    .swatch md-icon {
+      --md-icon-size: 20px;
+      color: #fff;
+      font-size: 20px;
+    }
+
+    .swatch.custom {
+      background: conic-gradient(
+        #ef4444,
+        #f59e0b,
+        #eab308,
+        #22c55e,
+        #06b6d4,
+        #3b82f6,
+        #a855f7,
+        #ec4899,
+        #ef4444
+      );
+      overflow: hidden;
+    }
+
+    .swatch.custom input {
+      cursor: pointer;
+      height: 100%;
+      inset: 0;
+      opacity: 0;
+      position: absolute;
+      width: 100%;
+    }
+
+    .preview {
+      align-items: center;
+      background: var(--outline-dark-primary);
+      border-radius: 10px;
+      color: #fff;
+      display: flex;
+      font-size: 0.85rem;
+      font-weight: 500;
+      gap: 8px;
+      justify-content: space-between;
+      margin: 0 14px 14px;
+      padding: 10px 12px;
+    }
+
+    .preview span:last-child {
+      background: var(--outline-primary);
+      border-radius: 99px;
+      font-size: 0.78rem;
+      padding: 4px 12px;
+    }
+
     dl {
       display: grid;
       gap: 8px 16px;
@@ -248,6 +343,8 @@ export class SettingsView extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.unsubscribe = onSettingsChange(s => (this.settings = s));
+    this.unsubscribeAccent = onAccentChange(a => (this.accent = a));
+    this.appearance = currentAppearance();
     getDeviceInfo().then(
       info => (this.info = info),
       e => console.warn(`device info failed: ${e}`)
@@ -257,6 +354,7 @@ export class SettingsView extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.unsubscribe?.();
+    this.unsubscribeAccent?.();
   }
 
   private toggle(key: BoolKey, titleKey: string, descKey: string) {
@@ -364,6 +462,78 @@ export class SettingsView extends LitElement {
             </div>`
         : nothing}
 
+      <h3>${this.localize('proclient-settings-appearance')}</h3>
+      <div class="card">
+        <div class="row">
+          <div class="text">
+            <div class="title">${this.localize('proclient-set-theme')}</div>
+          </div>
+          <select
+            @change=${(e: Event) =>
+              this.setAppearance((e.target as HTMLSelectElement).value)}
+          >
+            ${(['light', 'dark', 'system'] as const).map(
+              mode =>
+                html`<option
+                  value=${mode}
+                  ?selected=${mode === this.appearance}
+                >
+                  ${this.localize(`proclient-theme-${mode}`)}
+                </option>`
+            )}
+          </select>
+        </div>
+        <div class="row">
+          <div class="text">
+            <div class="title">${this.localize('proclient-set-color')}</div>
+            <div class="desc">${this.localize('proclient-set-color-desc')}</div>
+          </div>
+        </div>
+        <div class="swatches" role="radiogroup">
+          ${ACCENTS.map(
+            a =>
+              html`<button
+                class="swatch ${this.accent.color === a.color
+                  ? 'selected'
+                  : ''}"
+                style="background: linear-gradient(135deg, ${a.color}, ${a.header})"
+                role="radio"
+                aria-checked=${this.accent.color === a.color ? 'true' : 'false'}
+                aria-label=${a.id}
+                @click=${() => setAccent(a.id)}
+              >
+                ${this.accent.color === a.color
+                  ? html`<md-icon>check</md-icon>`
+                  : nothing}
+              </button>`
+          )}
+          <label
+            class="swatch custom ${this.accent.id === 'custom'
+              ? 'selected'
+              : ''}"
+            title=${this.localize('proclient-color-custom')}
+            style=${this.accent.id === 'custom'
+              ? `background: ${this.accent.color}`
+              : ''}
+          >
+            <md-icon
+              >${this.accent.id === 'custom' ? 'check' : 'palette'}</md-icon
+            >
+            <input
+              type="color"
+              aria-label=${this.localize('proclient-color-custom')}
+              .value=${this.accent.color.toLowerCase()}
+              @input=${(e: Event) =>
+                setAccent((e.target as HTMLInputElement).value)}
+            />
+          </label>
+        </div>
+        <div class="preview">
+          <span>${document.title || 'Protected VPN'}</span>
+          <span>Connect</span>
+        </div>
+      </div>
+
       <h3>${this.localize('device-page-title')}</h3>
       <div class="card">
         <div class="hwid-row">
@@ -398,6 +568,17 @@ export class SettingsView extends LitElement {
     `;
   }
 
+  private setAppearance(mode: string) {
+    this.appearance = mode;
+    this.dispatchEvent(
+      new CustomEvent('SetAppearanceRequested', {
+        detail: {appearance: mode},
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
   private async copy() {
     const text = this.info?.hwid;
     if (!text) return;
@@ -417,4 +598,12 @@ export class SettingsView extends LitElement {
     window.clearTimeout(this.copiedTimer);
     this.copiedTimer = window.setTimeout(() => (this.copied = false), 1800);
   }
+}
+
+/** Light / dark / system, as last chosen (kept by app-root). */
+function currentAppearance(): string {
+  const root = document.querySelector('app-root') as {
+    selectedAppearance?: string;
+  } | null;
+  return root?.selectedAppearance || 'system';
 }

@@ -820,18 +820,22 @@ export class ConnectBar extends LitElement {
 
     /* Connected: like the reference, dark fill with a bright ring. */
     :host([connection-state='connected']) .pill {
-      background: #11613a;
-      border-color: #22a35d;
-      box-shadow: 0 0 0 0 rgba(34, 163, 93, 0.5);
-      color: #c7f5da;
+      background: var(--outline-dark-primary, #11613a);
+      border-color: var(--outline-primary, #22a35d);
+      box-shadow: 0 0 0 0 rgba(var(--outline-primary-rgb, 34, 163, 93), 0.5);
+      color: #fff;
     }
 
     :host([connection-state='connecting']) .pill,
     :host([connection-state='reconnecting']) .pill {
       animation: ring 1.2s ease-out infinite;
-      background: #1d4a33;
-      border-color: #22a35d;
-      color: #c7f5da;
+      background: color-mix(
+        in srgb,
+        var(--outline-dark-primary, #11613a) 60%,
+        #383a39
+      );
+      border-color: var(--outline-primary, #22a35d);
+      color: #fff;
     }
 
     :host([connection-state='disconnecting']) .pill {
@@ -840,10 +844,10 @@ export class ConnectBar extends LitElement {
 
     @keyframes ring {
       0% {
-        box-shadow: 0 0 0 0 rgba(34, 163, 93, 0.55);
+        box-shadow: 0 0 0 0 rgba(var(--outline-primary-rgb, 34, 163, 93), 0.55);
       }
       100% {
-        box-shadow: 0 0 0 12px rgba(34, 163, 93, 0);
+        box-shadow: 0 0 0 12px rgba(var(--outline-primary-rgb, 34, 163, 93), 0);
       }
     }
 

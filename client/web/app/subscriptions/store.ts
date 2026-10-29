@@ -163,22 +163,28 @@ class ProclientStore {
 
   /** Latency per server id in ms; null = unreachable; absent = not measured. */
   pings: Record<string, number | null> = {};
+  /** True while any batch ping runs (each card spins via pingingIds). */
   pinging = false;
-  private pingRun = 0;
+  private batchesInFlight = 0;
 
-  /** Measures all given servers (id + "host:port"); ignores empty addresses. */
+  /**
+   * Measures the given servers (id + "host:port"); ignores empty addresses.
+   * Batches may run side by side (one per subscription); results merge.
+   */
   async pingServers(
     servers: Array<{id: string; address: string}>,
     measure: (addresses: string[]) => Promise<Record<string, number>>
   ): Promise<void> {
-    const targets = servers.filter(s => s.address);
+    const targets = servers.filter(
+      s => s.address && !this.pingingIds.has(s.id)
+    );
     if (!targets.length) return;
-    const run = ++this.pingRun;
+    for (const s of targets) this.pingingIds.add(s.id);
+    this.batchesInFlight++;
     this.pinging = true;
     this.emit();
     try {
       const results = await measure(targets.map(s => s.address));
-      if (run !== this.pingRun) return;
       const pings = {...this.pings};
       for (const s of targets) {
         const ms = results[s.address];
@@ -188,10 +194,10 @@ class ProclientStore {
     } catch (e) {
       console.warn(`ping failed: ${e}`);
     } finally {
-      if (run === this.pingRun) {
-        this.pinging = false;
-        this.emit();
-      }
+      for (const s of targets) this.pingingIds.delete(s.id);
+      this.batchesInFlight--;
+      this.pinging = this.batchesInFlight > 0;
+      this.emit();
     }
   }
 
