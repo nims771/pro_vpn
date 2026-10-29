@@ -41,6 +41,9 @@ type fetchSubscriptionResponse struct {
 	// Raw "Profile-Web-Page-Url" / "Support-Url" headers.
 	WebPageURL string `json:"webPageUrl"`
 	SupportURL string `json:"supportUrl"`
+	// Fork: every "x-*" header (lower-cased), e.g. device counts that some
+	// panels and converters add ("x-hwid-devices: 2/3").
+	ExtraHeaders map[string]string `json:"extraHeaders,omitempty"`
 }
 
 // fetchSubscriptionRequest is the JSON input of FetchSubscription. A plain URL
@@ -115,6 +118,7 @@ func fetchSubscription(input string) (string, error) {
 		UpdateInterval: resp.Header.Get("Profile-Update-Interval"),
 		WebPageURL:     resp.Header.Get("Profile-Web-Page-Url"),
 		SupportURL:     resp.Header.Get("Support-Url"),
+		ExtraHeaders:   extraHeaders(resp.Header),
 	})
 	if err != nil {
 		return "", platerrors.PlatformError{
@@ -124,4 +128,24 @@ func fetchSubscription(input string) (string, error) {
 		}
 	}
 	return string(out), nil
+}
+
+// extraHeaders returns the "x-*" response headers, lower-cased and trimmed.
+func extraHeaders(header http.Header) map[string]string {
+	out := map[string]string{}
+	for name, values := range header {
+		key := strings.ToLower(name)
+		if !strings.HasPrefix(key, "x-") || len(values) == 0 || len(out) >= 50 {
+			continue
+		}
+		value := strings.TrimSpace(values[0])
+		if len(value) > 200 {
+			value = value[:200]
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

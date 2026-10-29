@@ -17,7 +17,9 @@
 import uuidv4 from 'uuidv4';
 
 import {
+  DeviceUsage,
   decodeProfileTitle,
+  parseDeviceUsage,
   parseSubscriptionBody,
   parseUserInfo,
   SubscriptionUserInfo,
@@ -37,12 +39,14 @@ interface FetchedSubscription {
   updateInterval?: string;
   supportUrl?: string;
   webPageUrl?: string;
+  extraHeaders?: Record<string, string>;
 }
 
 interface Downloaded {
   entries: Array<{accessKey: string; name: string}>;
   skipped: number;
   userInfo?: SubscriptionUserInfo;
+  devices?: DeviceUsage;
   title?: string;
   updateIntervalHours?: number;
   supportUrl?: string;
@@ -93,6 +97,7 @@ export class SubscriptionManager {
       url,
       title: downloaded.title || hostOf(url),
       userInfo: downloaded.userInfo,
+      devices: downloaded.devices,
       supportUrl: downloaded.supportUrl,
       updateIntervalHours: downloaded.updateIntervalHours,
       updatedAt: Date.now(),
@@ -141,6 +146,7 @@ export class SubscriptionManager {
         ...subscription,
         title: downloaded.title || subscription.title,
         userInfo: downloaded.userInfo ?? subscription.userInfo,
+        devices: downloaded.devices,
         supportUrl: downloaded.supportUrl ?? subscription.supportUrl,
         updateIntervalHours:
           downloaded.updateIntervalHours ?? subscription.updateIntervalHours,
@@ -212,6 +218,7 @@ async function download(url: string): Promise<Downloaded> {
     entries,
     skipped,
     userInfo,
+    devices: parseDeviceUsage(fetched.extraHeaders),
     title: decodeProfileTitle(fetched.title),
     updateIntervalHours: hours > 0 ? Math.max(1, hours) : undefined,
     supportUrl: fetched.supportUrl || fetched.webPageUrl || undefined,

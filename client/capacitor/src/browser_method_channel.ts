@@ -65,6 +65,11 @@ export class CapacitorBrowserMethodChannel implements MethodChannel {
           updateInterval: res.headers.get('Profile-Update-Interval') ?? '',
           webPageUrl: res.headers.get('Profile-Web-Page-Url') ?? '',
           supportUrl: res.headers.get('Support-Url') ?? '',
+          extraHeaders: Object.fromEntries(
+            [...res.headers.entries()].filter(([name]) =>
+              name.toLowerCase().startsWith('x-')
+            )
+          ),
         });
       }
       case 'EraseServiceStorage':

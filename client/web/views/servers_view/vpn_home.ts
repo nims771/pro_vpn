@@ -650,16 +650,43 @@ export class VpnHome extends LitElement {
               : `${date} · ${this.localize('proclient-days-short', 'days', String(days))}`
             : this.localize('proclient-no-expiry')}
         </span>
-        <span>
-          <md-icon>dns</md-icon>
-          ${this.localize(
-            'proclient-subscription-servers',
-            'count',
-            String(sub.serverCount ?? 0)
-          )}
-        </span>
+        ${this.renderDevices(sub)}
       </div>
     </section>`;
+  }
+
+  /** Devices "2 / 3" when the panel reports them, else the server count. */
+  private renderDevices(sub: SubscriptionView) {
+    const d = sub.devices;
+    if (d?.limitReached && d.used === undefined) {
+      return html`<span class="gone">
+        <md-icon>smartphone</md-icon>
+        ${this.localize('proclient-devices-limit-reached')}
+      </span>`;
+    }
+    if (d?.used !== undefined) {
+      const full = d.limitReached || (!!d.limit && d.used >= d.limit);
+      return html`<span class=${full ? 'gone' : ''}>
+        <md-icon>smartphone</md-icon>
+        ${d.limit === undefined
+          ? this.localize('proclient-devices-count', 'count', String(d.used))
+          : this.localize(
+              'proclient-devices',
+              'used',
+              String(d.used),
+              'limit',
+              d.limit === 0 ? '∞' : String(d.limit)
+            )}
+      </span>`;
+    }
+    return html`<span>
+      <md-icon>dns</md-icon>
+      ${this.localize(
+        'proclient-subscription-servers',
+        'count',
+        String(sub.serverCount ?? 0)
+      )}
+    </span>`;
   }
 
   private renderSpeeds() {

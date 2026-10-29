@@ -22,6 +22,64 @@ import {
 // Fork: parsing of VPN panel subscriptions (Marzban, 3x-ui, Remnawave, ...).
 
 /** Traffic quota from the "Subscription-Userinfo" header. Bytes / unix seconds. */
+/** Fork: devices on the subscription, if the panel reports them. */
+export interface DeviceUsage {
+  /** Devices registered (by HWID); undefined if unknown. */
+  used?: number;
+  /** Device limit; 0 means unlimited; undefined if unknown. */
+  limit?: number;
+  /** The panel refused this device: the limit is reached. */
+  limitReached?: boolean;
+}
+
+/**
+ * Reads device usage from response headers (lower-cased names):
+ *  - "x-hwid-devices" / "x-devices": "2/3", "2/∞", "2/0" (0 = no limit) or "2";
+ *  - "x-hwid-devices-count" / "x-devices-count" with
+ *    "x-hwid-devices-limit" / "x-devices-limit" / "x-device-limit";
+ *  - "x-hwid-max-devices-reached" / "x-hwid-limit": "true" (Remnawave).
+ */
+export function parseDeviceUsage(
+  headers?: Record<string, string>
+): DeviceUsage | undefined {
+  if (!headers) return undefined;
+  const get = (...names: string[]) =>
+    names.map(n => headers[n]?.trim()).find(v => v);
+  const toLimit = (v?: string) => {
+    if (!v) return undefined;
+    if (/^(∞|inf|infinity|unlimited|-1|0)$/i.test(v)) return 0;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const toCount = (v?: string) => {
+    const n = v === undefined ? NaN : parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+
+  const usage: DeviceUsage = {};
+  const pair = get('x-hwid-devices', 'x-devices');
+  if (pair) {
+    const [used, limit] = pair.split('/').map(p => p.trim());
+    usage.used = toCount(used);
+    usage.limit = toLimit(limit);
+  }
+  usage.used ??= toCount(get('x-hwid-devices-count', 'x-devices-count'));
+  usage.limit ??= toLimit(
+    get('x-hwid-devices-limit', 'x-devices-limit', 'x-device-limit')
+  );
+  if (
+    /^true$/i.test(get('x-hwid-max-devices-reached') ?? '') ||
+    /^true$/i.test(get('x-hwid-limit') ?? '')
+  ) {
+    usage.limitReached = true;
+  }
+  return usage.used !== undefined ||
+    usage.limit !== undefined ||
+    usage.limitReached
+    ? usage
+    : undefined;
+}
+
 export interface SubscriptionUserInfo {
   upload: number;
   download: number;

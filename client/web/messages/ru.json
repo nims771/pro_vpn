@@ -220,5 +220,8 @@
   "proclient-tab-vpn": "VPN",
   "proclient-tab-profiles": "Профили",
   "proclient-tab-settings": "Настройки",
-  "proclient-no-server": "Выберите сервер"
+  "proclient-no-server": "Выберите сервер",
+  "proclient-devices": "{used} / {limit} устр.",
+  "proclient-devices-count": "{count} устр.",
+  "proclient-devices-limit-reached": "Лимит устройств"
 }

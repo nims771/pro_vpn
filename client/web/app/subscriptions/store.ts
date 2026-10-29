@@ -15,13 +15,15 @@
 // Fork: shared state behind the top panel (subscription quota + live traffic).
 // The app writes it, the panel reads it; both live in the same bundle.
 
-import type {SubscriptionUserInfo} from './parse';
+import type {DeviceUsage, SubscriptionUserInfo} from './parse';
 
 export interface Subscription {
   id: string;
   url: string;
   title?: string;
   userInfo?: SubscriptionUserInfo;
+  /** Fork: devices on this subscription, when the panel reports them. */
+  devices?: DeviceUsage;
   supportUrl?: string;
   /** How often to refresh, in hours (from the panel, default 6). */
   updateIntervalHours?: number;
