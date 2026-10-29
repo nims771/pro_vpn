@@ -232,3 +232,32 @@ func doOutsideVPNFirst(req *http.Request, timeout time.Duration) (*http.Response
 	errs = append(errs, err)
 	return nil, errors.Join(errs...)
 }
+
+// ResolverOnInterface looks names up outside the VPN through the given
+// network adapter (Windows), falling back to the system resolver. Used by the
+// tunnel process to find Xray servers given by domain name.
+func ResolverOnInterface(index int) func(ctx context.Context, host string) ([]string, error) {
+	return func(ctx context.Context, host string) ([]string, error) {
+		var errs []error
+		if control := bindToInterface(index); control != nil && index > 0 {
+			dialer := &net.Dialer{Timeout: 5 * time.Second, Control: control}
+			ips, err := resolveOutsideVPN(ctx, host, dialer)
+			if err == nil && len(ips) > 0 {
+				return ips, nil
+			}
+			errs = append(errs, err)
+		}
+		lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		addrs, err := net.DefaultResolver.LookupIP(lookupCtx, "ip4", host)
+		if err == nil && len(addrs) > 0 {
+			ips := make([]string, 0, len(addrs))
+			for _, a := range addrs {
+				ips = append(ips, a.String())
+			}
+			return ips, nil
+		}
+		errs = append(errs, err)
+		return nil, errors.Join(errs...)
+	}
+}

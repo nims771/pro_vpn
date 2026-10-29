@@ -15,6 +15,7 @@
 import * as methodChannel from '@outline/client/web/app/method_channel';
 
 import * as errors from '../../model/errors';
+import {isXrayLink, stripLinkName, xrayLinkName} from '../xray_links';
 
 /**
  * ServiceConfig represents an Outline service. It's the structured representation of an Access Key.
@@ -94,6 +95,24 @@ export async function parseTunnelConfig(
 export async function parseAccessKey(
   accessKeyText: string
 ): Promise<ServiceConfig> {
+  // Fork: VLESS, VMess, Trojan, Hysteria2, WireGuard links (Xray-core). Not
+  // parsed with URL: their ports ("443,20000-30000") and base64 bodies (VMess)
+  // aren't valid URLs.
+  if (isXrayLink(accessKeyText)) {
+    try {
+      const parsed = await parseTunnelConfig(stripLinkName(accessKeyText));
+      return new StaticServiceConfig(
+        xrayLinkName(accessKeyText),
+        parsed.firstHop,
+        parsed.client,
+        parsed.connectionType
+      );
+    } catch (e) {
+      throw new errors.InvalidServiceConfiguration('Invalid access key.', {
+        cause: e,
+      });
+    }
+  }
   try {
     const accessKeyUrl = new URL(accessKeyText.trim());
 

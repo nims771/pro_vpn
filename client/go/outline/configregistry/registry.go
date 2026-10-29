@@ -20,6 +20,7 @@ import (
 	"net"
 
 	"localhost/client/go/configyaml"
+	"localhost/client/go/outline/xraytransport"
 	"golang.getoutline.org/sdk/transport"
 )
 
@@ -94,6 +95,11 @@ func NewDefaultTransportProvider(directSD transport.StreamDialer, directPD trans
 	})
 
 	transports := newTypeParser(func(ctx context.Context, input configyaml.ConfigNode) (*TransportPair, error) {
+		// Fork: VLESS / VMess / Trojan / Hysteria2 / WireGuard / Shadowsocks 2022
+		// links go through Xray-core.
+		if link, ok := input.(string); ok && xraytransport.IsXrayLink(link) {
+			return parseXrayTransport(link)
+		}
 		// If parser directive is missing, parse as Shadowsocks for backwards-compatibility.
 		return parseShadowsocksTransport(ctx, input, streamEndpoints.Parse, packetEndpoints.Parse)
 	})

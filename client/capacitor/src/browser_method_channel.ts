@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import type {MethodChannel} from '@web/app/method_channel';
+import {isXrayLink, xrayLinkAddress} from '@web/app/xray_links';
 
 /**
  * MethodChannel for Capacitor when running in the browser (webpack dev server).
@@ -80,6 +81,17 @@ function parseTunnelConfigBrowser(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {
     throw new Error('empty tunnel config');
+  }
+
+  // Fork: Xray links (preview only shows them; the app connects natively).
+  if (isXrayLink(trimmed)) {
+    const firstHop = xrayLinkAddress(trimmed);
+    if (!firstHop) throw new Error('bad server link');
+    return JSON.stringify({
+      client: JSON.stringify({transport: trimmed}),
+      firstHop,
+      connectionType: 'tunneled',
+    });
   }
 
   const ssUrl = extractSsUrl(trimmed);

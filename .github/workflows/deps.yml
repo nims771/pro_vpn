@@ -1,0 +1,49 @@
+# Обновляет Go-зависимости (go.mod / go.sum) в облаке и сохраняет их в main.
+# Нужен, потому что добавить модуль (например Xray-core) можно только с
+# доступом к прокси Go-модулей. Запуск: Actions → Update Go dependencies.
+
+name: Update Go dependencies
+
+on:
+  workflow_dispatch:
+    inputs:
+      modules:
+        description: 'Модули через пробел (module@version)'
+        required: true
+        default: 'github.com/xtls/xray-core@v26.2.6'
+
+permissions:
+  contents: write
+
+jobs:
+  deps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.25.7'
+          cache: false
+
+      - name: Update go.mod / go.sum
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go get ${{ github.event.inputs.modules }}
+          go mod tidy
+          go vet ./client/go/outline/xraytransport/ ./client/go/outline/configregistry/
+          GOOS=windows GOARCH=386 go vet ./client/go/outline/xraytransport/
+          GOOS=android GOARCH=arm64 go vet ./client/go/outline/xraytransport/
+          git diff --stat
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go.mod go.sum
+          git commit -m "Update Go dependencies: ${{ github.event.inputs.modules }}" || echo "nothing to commit"
+          git push

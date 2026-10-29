@@ -1,0 +1,35 @@
+// Copyright 2026 The Outline Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package configregistry
+
+import (
+	"fmt"
+
+	"golang.getoutline.org/sdk/transport"
+	"localhost/client/go/outline/xraytransport"
+)
+
+// Fork: a server reached through Xray-core (see package xraytransport).
+func parseXrayTransport(link string) (*TransportPair, error) {
+	t, err := xraytransport.New(link)
+	if err != nil {
+		return nil, fmt.Errorf("unsupported server link: %w", err)
+	}
+	info := ConnectionProviderInfo{ConnTypeTunneled, t.FirstHop}
+	return wrapTransportPairWithOutlineDNS(
+		&Dialer[transport.StreamConn]{ConnectionProviderInfo: info, Dial: t.DialStream},
+		&PacketListener{ConnectionProviderInfo: info, PacketListener: t},
+	)
+}

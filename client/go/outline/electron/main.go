@@ -33,6 +33,7 @@ import (
 	"localhost/client/go/outline/connectivity"
 	"localhost/client/go/outline/platerrors"
 	"localhost/client/go/outline/vpn"
+	"localhost/client/go/outline/xraytransport"
 	_ "github.com/eycorsican/go-tun2socks/common/log/simple" // Register a simple logger.
 	"github.com/eycorsican/go-tun2socks/tun"
 )
@@ -126,6 +127,14 @@ func main() {
 	}
 
 	clientConfig := outline.ClientConfig{}
+	if *args.adapterIndex > 0 {
+		// Fork: Xray servers (VLESS, Trojan, ...) are reached through the
+		// physical adapter too, and their names resolved outside the VPN.
+		if err := xraytransport.BindToInterface(*args.adapterIndex); err != nil {
+			slog.Warn("xray: could not bind to the network adapter", "err", err)
+		}
+		xraytransport.SetResolver(outline.ResolverOnInterface(*args.adapterIndex))
+	}
 	if *args.adapterIndex >= 0 {
 		tcp, udp, err := newBaseDialersWithAdapter(*args.adapterIndex)
 		if err != nil {

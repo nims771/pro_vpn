@@ -24,6 +24,7 @@ import {SubscriptionManager} from './subscriptions/manager';
 import {Updater} from './updater';
 import {UrlInterceptor} from './url_interceptor';
 import {VpnInstaller} from './vpn_installer';
+import {isXrayLink} from './xray_links';
 import * as errors from '../model/errors';
 import * as events from '../model/events';
 import {Server, ServerRepository} from '../model/server';
@@ -77,7 +78,9 @@ export function isOutlineAccessKey(url: string): boolean {
   // so we're using `startsWith`
   return (
     url.startsWith(`${OUTLINE_ACCESS_KEY_SCHEME.STATIC}://`) ||
-    url.startsWith(`${OUTLINE_ACCESS_KEY_SCHEME.DYNAMIC}://`)
+    url.startsWith(`${OUTLINE_ACCESS_KEY_SCHEME.DYNAMIC}://`) ||
+    // Fork: VLESS, VMess, Trojan, Hysteria2, WireGuard (Xray-core).
+    isXrayLink(url)
   );
 }
 

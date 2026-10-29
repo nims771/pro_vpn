@@ -23,6 +23,7 @@ const SS1 =
   'ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@185.22.104.17:443#%F0%9F%87%A9%F0%9F%87%AA%20Germany';
 const SS2 = 'ss://YWVzLTI1Ni1nY206c2VjcmV0@nl.example.com:8388#Netherlands';
 const VLESS = 'vless://uuid@1.2.3.4:443?security=reality#Reality';
+const UNKNOWN = 'tuic://uuid:pass@1.2.3.4:443#Tuic';
 
 function b64(s: string) {
   return btoa(String.fromCharCode(...new TextEncoder().encode(s)));
@@ -30,13 +31,25 @@ function b64(s: string) {
 
 describe('parseSubscriptionBody', () => {
   it('parses a base64 list and skips unsupported protocols', () => {
-    const result = parseSubscriptionBody(b64([SS1, VLESS, SS2].join('\n')));
+    const result = parseSubscriptionBody(
+      b64([SS1, VLESS, UNKNOWN, SS2].join('\n'))
+    );
     expect(result.entries.map(e => e.name)).toEqual([
       '🇩🇪 Germany',
+      'Reality',
       'Netherlands',
     ]);
     expect(result.entries[0].accessKey).toBe(SS1);
+    expect(result.entries[1].accessKey).toBe(VLESS);
     expect(result.skipped).toBe(1);
+  });
+
+  it('reads VMess names and addresses', () => {
+    const vmess =
+      'vmess://' +
+      b64(JSON.stringify({ps: 'VM 🇫🇮', add: 'vm.example.com', port: 443}));
+    const result = parseSubscriptionBody(vmess);
+    expect(result.entries[0].name).toBe('VM 🇫🇮');
   });
 
   it('parses url-safe base64 without padding', () => {

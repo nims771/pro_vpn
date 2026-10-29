@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {
+  isXrayLink,
+  protocolLabel,
+  xrayLinkAddress,
+  xrayLinkName,
+} from '../xray_links';
+
 // Fork: parsing of VPN panel subscriptions (Marzban, 3x-ui, Remnawave, ...).
 
 /** Traffic quota from the "Subscription-Userinfo" header. Bytes / unix seconds. */
@@ -98,6 +105,18 @@ export function parseSubscriptionBody(body: string): ParsedSubscription {
       if (seen.has(accessKey)) continue;
       seen.add(accessKey);
       entries.push({accessKey, name: nameFromLink(accessKey)});
+    } else if (isXrayLink(line)) {
+      // Fork: VLESS, VMess, Trojan, Hysteria2, WireGuard (Xray-core).
+      if (seen.has(line)) continue;
+      seen.add(line);
+      entries.push({
+        accessKey: line,
+        name:
+          xrayLinkName(line) ||
+          xrayLinkAddress(line) ||
+          protocolLabel(line) ||
+          'Server',
+      });
     } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(line)) {
       skipped++;
     }
