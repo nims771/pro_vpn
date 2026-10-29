@@ -1,0 +1,1 @@
+go: google.golang.org/genproto@latest: google.golang.org/genproto@v0.0.0-20261026165753-2ffab32bce7e requires go >= 1.26.0 (running go 1.25.7; GOTOOLCHAIN=local)
