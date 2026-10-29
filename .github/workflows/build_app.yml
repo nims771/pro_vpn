@@ -75,11 +75,29 @@ jobs:
 
       - name: Build debug APK
         if: env.ANDROID_KEY_STORE_CONTENTS == ''
-        run: npm run action client/capacitor/build android
+        run: |
+          set -o pipefail
+          npm run action client/capacitor/build android 2>&1 | tee /tmp/build.log
 
       - name: Build signed release
         if: env.ANDROID_KEY_STORE_CONTENTS != ''
-        run: npm run action client/capacitor/build android -- --buildMode=release --versionName="$VERSION"
+        run: |
+          set -o pipefail
+          npm run action client/capacitor/build android -- --buildMode=release --versionName="$VERSION" 2>&1 | tee /tmp/build.log
+
+      # Логи Actions отсюда не всегда скачиваются: хвост лога — в ветку ci-logs-android.
+      - name: Save log on failure
+        if: failure()
+        run: |
+          tail -c 200000 /tmp/build.log > /tmp/keep.log 2>/dev/null || echo "no log" > /tmp/keep.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan ci-log-tmp
+          git rm -rf --cached . > /dev/null
+          cp /tmp/keep.log build.log
+          git add build.log
+          git commit -m "build log ${{ github.run_id }} ${{ github.job }}"
+          git push -f origin HEAD:ci-logs-${{ github.job }}
 
       - name: Collect files
         run: |
@@ -145,7 +163,22 @@ jobs:
 
       # ia32: один установщик для любых Windows 10/11 (x64 и ARM запускают его).
       - name: Build installer
-        run: npm run action client/electron/build windows -- --arch ia32 --versionName="$VERSION"
+        run: |
+          set -o pipefail
+          npm run action client/electron/build windows -- --arch ia32 --versionName="$VERSION" 2>&1 | tee /tmp/build.log
+
+      - name: Save log on failure
+        if: failure()
+        run: |
+          tail -c 200000 /tmp/build.log > /tmp/keep.log 2>/dev/null || echo "no log" > /tmp/keep.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan ci-log-tmp
+          git rm -rf --cached . > /dev/null
+          cp /tmp/keep.log build.log
+          git add build.log
+          git commit -m "build log ${{ github.run_id }} ${{ github.job }}"
+          git push -f origin HEAD:ci-logs-${{ github.job }}
 
       - name: Collect files
         run: |
